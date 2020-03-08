@@ -13,7 +13,6 @@ namespace net.jancerveny.sofaking.client.console
     {
         static async Task Main(string[] args)
         {
-            bool endApp = false;
             var builder = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
                 .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
@@ -35,7 +34,7 @@ namespace net.jancerveny.sofaking.client.console
                 .AddSingleton<TPBCrawlerService>()
                 .BuildServiceProvider();
 
-            while (!endApp)
+            while (true)
             {
                 Console.WriteLine("Enter a movie name to look for: (CTRL+C to quit)");
                 var query = Console.ReadLine();
@@ -51,7 +50,7 @@ namespace net.jancerveny.sofaking.client.console
                 Console.WriteLine($"Best torrent: ({bestTorrent.Seeders} Seeders), {bestTorrent.SizeGb}Gb {bestTorrent.Name}");
                 Console.ResetColor();
                 Console.WriteLine("\n");
-                Console.WriteLine("Download? (y/n, q = quit)");
+                Console.WriteLine("Download? (y/n, CTRL+C = quit)");
                 var key = Console.ReadKey();
                 if (key.KeyChar == 'y')
                 {
@@ -62,13 +61,7 @@ namespace net.jancerveny.sofaking.client.console
                     };
                     Process.Start(psi);
                 }
-                if (key.KeyChar == 'q')
-                {
-                    endApp = true;
-                }
             }
-
-            return;
         }
     }
 }
