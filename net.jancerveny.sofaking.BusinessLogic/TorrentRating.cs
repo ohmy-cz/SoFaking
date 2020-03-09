@@ -14,11 +14,6 @@ namespace net.jancerveny.sofaking.BusinessLogic
                 return null;
             }
 
-            if(torrents.Count() == 1)
-            {
-                return torrents.FirstOrDefault();
-            }
-
             // First we get rid of the torrents that fall out of the basic requirement specs
             var filteredTorrents = torrents
                 .Where(x =>
