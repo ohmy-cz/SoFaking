@@ -1,4 +1,5 @@
 ﻿public enum TPBCategoriesEnum
 {
-    HDMovies = 207
+    HDMovies = 207,
+    HDShows = 208
 }

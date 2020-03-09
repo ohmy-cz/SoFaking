@@ -13,6 +13,7 @@ namespace net.jancerveny.sofaking.Common.Constants
             { "1080p", 110 },
             { "Atmos", 100 },
             { "TrueHD", 90 },
+            { "HD7.1", 90 }, //TODO: Search for Sixth sense, some tags should be searched before splitting by dot. Maybe split by regex that only splits words by dots between letters, ie not numbers?
             { "7.1", 90 },
             { "8CH", 90 },
             { "DTS-HD.MA 7.1", 85 },
@@ -47,9 +48,10 @@ namespace net.jancerveny.sofaking.Common.Constants
             { "Korean", -999},
             // Below 1000 are forbidden tags - these will be immediately removed from consideration
             { "TS", BannedTag },
-            { "READINFO", BannedTag },
+            { "READINFO", BannedTag }, // It's usually a bad sign, when the author wants you to read the info file.
             { "x265", BannedTag },
             { "ESubs", BannedTag },
+            { "KORSUB", BannedTag },
             { "E.Subs", BannedTag },
             { "DVDRip", BannedTag },
             { "DVD", BannedTag },
@@ -60,6 +62,7 @@ namespace net.jancerveny.sofaking.Common.Constants
             { "scr", BannedTag },
             { "480p", BannedTag },
             { "2160p", BannedTag }, // My screen doesn't support this format, skipping
+            { "4K", BannedTag }, // My screen doesn't support this format, skipping
             { "UHD", BannedTag }, // My screen doesn't support this format, skipping
             { "HDR", BannedTag }, // My screen doesn't support this format, skipping
             { "10 bit", BannedTag }, // My screen doesn't support this format, skipping

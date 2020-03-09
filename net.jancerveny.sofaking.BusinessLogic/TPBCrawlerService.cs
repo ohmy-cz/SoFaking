@@ -16,8 +16,10 @@ namespace net.jancerveny.sofaking.BusinessLogic
         private int _pagingDepthLimit = 3;
         private int _maxAttempts = 10;
         private readonly IHttpClientFactory _clientFactory;
+        private static Regex isSeries = new Regex(@"\ss\d+$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         public TPBCrawlerService(IHttpClientFactory clientFactory)
         {
+            if (clientFactory == null) throw new ArgumentNullException(nameof(clientFactory));
             _clientFactory = clientFactory;
         }
 
@@ -28,33 +30,36 @@ namespace net.jancerveny.sofaking.BusinessLogic
         /// <returns>A list of torrents ordered by Seeders</returns>
         public async Task<List<Torrent>> Search(string query)
         {
-            var client = _clientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
-            var i = 0;
-
-            while (true)
+            // TODO: Refactor this to make own TPB-crawler-specific client
+            using (var client = _clientFactory.CreateClient())
             {
-                if (i == _maxAttempts)
-                {
-                    throw new Exception($"Reached the limit of max attempts {_maxAttempts}");
-                }
-                i++;
+                client.Timeout = TimeSpan.FromSeconds(30);
+                var i = 0;
 
-                var host = TPBProxies.GetProxy();
-
-                try
+                while (true)
                 {
-                    return await FetchSearchResultPageAsync(client, host, query);
-                }
-                catch (Exception ex)
-                {
-                    if (ex is HttpRequestException || ex is ParsingErrorException)
+                    if (i == _maxAttempts)
                     {
-                        TPBProxies.ProxyInvalid();
-                        continue;
+                        throw new Exception($"Reached the limit of max attempts {_maxAttempts}");
                     }
+                    i++;
 
-                    throw;
+                    var host = TPBProxies.GetProxy();
+
+                    try
+                    {
+                        return await FetchSearchResultPageAsync(client, host, query, (isSeries.Match(query).Success ? TPBCategoriesEnum.HDShows : TPBCategoriesEnum.HDMovies));
+                    }
+                    catch (Exception ex)
+                    {
+                        if (ex is HttpRequestException || ex is ParsingErrorException)
+                        {
+                            TPBProxies.ProxyInvalid();
+                            continue;
+                        }
+
+                        throw;
+                    }
                 }
             }
         }
@@ -67,10 +72,10 @@ namespace net.jancerveny.sofaking.BusinessLogic
         /// <param name="query">The search query</param>
         /// <param name="pageNumber">Page number</param>
         /// <returns></returns>
-        private async Task<List<Torrent>> FetchSearchResultPageAsync(HttpClient client, string host, string query, int pageNumber = 1)
+        private async Task<List<Torrent>> FetchSearchResultPageAsync(HttpClient client, string host, string query, TPBCategoriesEnum category = TPBCategoriesEnum.HDMovies, int pageNumber = 1)
         {
             var result = new List<Torrent>();
-            var request = new HttpRequestMessage(HttpMethod.Get, $"{host}search/{HttpUtility.UrlEncode(query)}/{pageNumber}/{(int)TPBOrderByEnum.SeedersDesc}/{(int)TPBCategoriesEnum.HDMovies}");
+            var request = new HttpRequestMessage(HttpMethod.Get, $"{host}search/{HttpUtility.UrlEncode(query)}/{pageNumber}/{(int)TPBOrderByEnum.SeedersDesc}/{(int)category}");
             HttpResponseMessage response;
 
             response = await client.SendAsync(request);
@@ -135,7 +140,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
                 var nextPage = pageNumber + 1;
                 if (result.Count() > 0 && nextPage <= _pagingDepthLimit && result.Last().Seeders > 0 && availablePages.Contains(nextPage))
                 {
-                    result.AddRange(await FetchSearchResultPageAsync(client, host, query, nextPage));
+                    result.AddRange(await FetchSearchResultPageAsync(client, host, query, category, nextPage));
                 }
             }
 
