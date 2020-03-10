@@ -4,6 +4,6 @@ namespace net.jancerveny.sofaking.BusinessLogic.Interfaces
 {
     public interface ITorrentClientService
     {
-        Task AddTorrentAsync(string magnetLink);
+        Task<ITorrentAddedResponse> AddTorrentAsync(string magnetLink);
     }
 }

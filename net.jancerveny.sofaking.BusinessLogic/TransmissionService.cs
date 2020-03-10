@@ -1,4 +1,5 @@
 ﻿using net.jancerveny.sofaking.BusinessLogic.Interfaces;
+using net.jancerveny.sofaking.BusinessLogic.Models;
 using net.jancerveny.sofaking.Common.Models;
 using System;
 using System.Linq;
@@ -27,7 +28,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
             _auth = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_transmissionConfiguration.Username}:{_transmissionConfiguration.Password}")));
         }
 
-        public async Task AddTorrentAsync(string magnetLink)
+        public async Task<ITorrentAddedResponse> AddTorrentAsync(string magnetLink)
         {
             await GetFreshSessionId();
             // TODO: Refactor this to make own Transmission-specific client
@@ -54,6 +55,8 @@ namespace net.jancerveny.sofaking.BusinessLogic
                 {
                     throw new Exception($"Unexpected HTTP response code: {response.StatusCode}, {await response.Content.ReadAsStringAsync()}");
                 }
+
+                return JsonSerializer.Deserialize<TransmissionResponseObject>(await response.Content.ReadAsStringAsync())?.Arguments?.TorrentAdded;
             }
         }
 
@@ -73,6 +76,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
         }
     }
 
+    // TODO: Refactor the stuff below
     public class TransmissionRequestObject
     {
         [JsonPropertyName("method")]
@@ -89,5 +93,16 @@ namespace net.jancerveny.sofaking.BusinessLogic
         public string DownloadDir { get; set; }
         [JsonPropertyName("filename")]
         public string Filename { get; set; }
+    }
+    public class TransmissionResponseObject
+    {
+        [JsonPropertyName("arguments")]
+        public TransmissionResponseObjectArguments Arguments { get; set; }
+    }
+
+    public class TransmissionResponseObjectArguments
+    {
+        [JsonPropertyName("torrent-added")]
+        public TorrentAddedResponse TorrentAdded { get; set; }
     }
 }

@@ -13,7 +13,7 @@ namespace net.jancerveny.sofaking.DataLayer.Models
         public int TorrentClientTorrentId { get; set; }
         public double SizeGb { get; set; }
         public MovieStatusEnum Status { get; set; }
-        public string ImdbUrl { get; set; }
+        public string ImdbId { get; set; }
         public int MetacriticScore { get; set; }
         public double ImdbScore { get; set; }
     }

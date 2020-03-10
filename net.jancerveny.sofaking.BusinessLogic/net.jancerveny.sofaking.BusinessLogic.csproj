@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\net.jancerveny.sofaking.Common\net.jancerveny.sofaking.Common.csproj" />
+    <ProjectReference Include="..\net.jancerveny.sofaking.DataLayer\net.jancerveny.sofaking.DataLayer.csproj" />
   </ItemGroup>
 
 </Project>

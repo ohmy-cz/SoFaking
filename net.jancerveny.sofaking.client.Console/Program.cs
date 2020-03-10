@@ -4,6 +4,8 @@ using net.jancerveny.sofaking.BusinessLogic;
 using net.jancerveny.sofaking.BusinessLogic.Interfaces;
 using net.jancerveny.sofaking.Common.Constants;
 using net.jancerveny.sofaking.Common.Models;
+using net.jancerveny.sofaking.DataLayer;
+using net.jancerveny.sofaking.DataLayer.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -14,6 +16,7 @@ namespace net.jancerveny.sofaking.client.console
 {
     class Program
     {
+        private static ServiceProvider _serviceProvider;
         static async Task Main(string[] args)
         {
             var builder = new ConfigurationBuilder()
@@ -24,7 +27,7 @@ namespace net.jancerveny.sofaking.client.console
 
             IConfigurationRoot configuration = builder.Build();
             var proxies = new List<string>();
-            configuration.GetSection("TPBPRoxies").Bind(proxies);
+            configuration.GetSection("TPBProxies").Bind(proxies);
             if(proxies.Count == 0)
             {
                 throw new Exception("TPB Proxies configuration missing");
@@ -33,13 +36,16 @@ namespace net.jancerveny.sofaking.client.console
 
             var transmissionConfiguration = new TransmissionConfiguration();
             configuration.GetSection("Transmission").Bind(transmissionConfiguration);
-            var serviceProvider = new ServiceCollection()
+            _serviceProvider = new ServiceCollection()
                 .AddLogging()
                 .AddHttpClient()
                 .AddSingleton(transmissionConfiguration)
+                .AddSingleton(new SoFakingContextFactory())
+                .AddSingleton<MovieService>()
                 .AddSingleton<TPBCrawlerService>()
                 .AddSingleton<ITorrentClientService, TransmissionService>()
                 .BuildServiceProvider();
+
 
             while (true)
             {
@@ -47,14 +53,19 @@ namespace net.jancerveny.sofaking.client.console
                 Console.ResetColor();
                 Console.WriteLine("Enter a movie name to look for: (CTRL+C to quit)");
                 var query = Console.ReadLine();
-                var crawler = serviceProvider.GetService<TPBCrawlerService>();
+                var crawler = _serviceProvider.GetService<TPBCrawlerService>();
                 var results = await crawler.Search(query);
                 if(results.Count == 0)
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine("No results found.");
                     Console.ResetColor();
-                    Console.ReadKey();
+                    //Console.ReadKey();
+                    await AddToWatchlist(new Movie
+                    {
+                        TorrentName = query,
+                        Status = MovieStatusEnum.WatchingFor
+                    });
                     continue;
                 }
                 foreach (var t in results)
@@ -67,7 +78,12 @@ namespace net.jancerveny.sofaking.client.console
                     Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine($"None of the torrents above passed the limits (Seeders > 0, Size Gb > {TorrentScoring.FileSizeGbMin} < {TorrentScoring.FileSizeGbMax}), or contained a banned word: {string.Join(", ", TorrentScoring.Tags.Where(x => x.Value == TorrentScoring.BannedTag).Select(x => x.Key))}");
                     Console.ResetColor();
-                    Console.ReadKey();
+                    //Console.ReadKey();
+                    await AddToWatchlist(new Movie
+                    {
+                        TorrentName = query,
+                        Status = MovieStatusEnum.WatchingFor
+                    });
                     continue;
                 }
                 Console.WriteLine("\n");
@@ -79,10 +95,17 @@ namespace net.jancerveny.sofaking.client.console
                 var key = Console.ReadKey();
                 if (key.KeyChar == 'y')
                 {
-                    var transmission = serviceProvider.GetService<ITorrentClientService>();
+                    var transmission = _serviceProvider.GetService<ITorrentClientService>();
                     try
                     {
-                        await transmission.AddTorrentAsync(bestTorrent.MagnetLink);
+                        var result = await transmission.AddTorrentAsync(bestTorrent.MagnetLink);
+                        await AddToWatchlist(new Movie
+                        {
+                            TorrentName = query,
+                            TorrentClientTorrentId = result.TorrentId,
+                            TorrentHash = result.Hash,
+                            Status = MovieStatusEnum.Queued
+                        });
                     } catch(Exception ex)
                     {
                         Console.WriteLine($"Could not add torrent to download: {ex.Message}");
@@ -94,6 +117,26 @@ namespace net.jancerveny.sofaking.client.console
                     //    UseShellExecute = true
                     //};
                     //Process.Start(psi);
+                }
+            }
+        }
+
+        private static async Task AddToWatchlist(Movie movie)
+        {
+
+            Console.WriteLine("Add to watchlist?");
+            var key = Console.ReadKey();
+            if (key.KeyChar == 'y')
+            {
+                var movieService = _serviceProvider.GetService<MovieService>();
+                try
+                {
+                    await movieService.AddMovie(movie);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Could not add torrent to download: {ex.Message}");
+                    Console.ReadKey();
                 }
             }
         }

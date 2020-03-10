@@ -7,18 +7,21 @@ namespace net.jancerveny.sofaking.DataLayer
 {
     public class SoFakingContext : DbContext
     {
+        public SoFakingContext(DbContextOptions<SoFakingContext> options) : base(options)
+        {
+        }
         public DbSet<Movie> Movies { get; set; }
 
-        protected override void OnConfiguring(DbContextOptionsBuilder options)
-        {
-            var builder = new ConfigurationBuilder();
-            builder
-                .SetBasePath(Directory.GetCurrentDirectory())
-                .AddJsonFile("appsettings.Production.json", optional: false); // TODO: Make this switch depending on the enviroment
+        //protected override void OnConfiguring(DbContextOptionsBuilder options)
+        //{
+        //    var builder = new ConfigurationBuilder();
+        //    builder
+        //        .SetBasePath(Directory.GetCurrentDirectory())
+        //        .AddJsonFile("appsettings.Production.json", optional: false); // TODO: Make this switch depending on the enviroment
 
-            var configuration = builder.Build();
+        //    var configuration = builder.Build();
 
-            options.UseNpgsql(configuration.GetConnectionString("Db"));
-        }
+        //    options.UseNpgsql(configuration.GetConnectionString("Db"));
+        //}
     }
 }
