@@ -4,7 +4,7 @@ using System.Text;
 
 namespace net.jancerveny.sofaking.Common.Models
 {
-    public class Torrent
+    public class TorrentSearchResult
     {
         public string Name { get; set; }
         public string MagnetLink { get; set; }

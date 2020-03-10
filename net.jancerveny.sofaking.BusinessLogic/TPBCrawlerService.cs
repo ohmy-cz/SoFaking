@@ -28,7 +28,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
         /// </summary>
         /// <param name="query">The movie name to search for</param>
         /// <returns>A list of torrents ordered by Seeders</returns>
-        public async Task<List<Torrent>> Search(string query)
+        public async Task<List<TorrentSearchResult>> Search(string query)
         {
             // TODO: Refactor this to make own TPB-crawler-specific client
             using (var client = _clientFactory.CreateClient())
@@ -72,9 +72,9 @@ namespace net.jancerveny.sofaking.BusinessLogic
         /// <param name="query">The search query</param>
         /// <param name="pageNumber">Page number</param>
         /// <returns></returns>
-        private async Task<List<Torrent>> FetchSearchResultPageAsync(HttpClient client, string host, string query, TPBCategoriesEnum category = TPBCategoriesEnum.HDMovies, int pageNumber = 1)
+        private async Task<List<TorrentSearchResult>> FetchSearchResultPageAsync(HttpClient client, string host, string query, TPBCategoriesEnum category = TPBCategoriesEnum.HDMovies, int pageNumber = 1)
         {
-            var result = new List<Torrent>();
+            var result = new List<TorrentSearchResult>();
             var request = new HttpRequestMessage(HttpMethod.Get, $"{host}search/{HttpUtility.UrlEncode(query)}/{pageNumber}/{(int)TPBOrderByEnum.SeedersDesc}/{(int)category}");
             HttpResponseMessage response;
 
@@ -112,7 +112,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
                         size = Math.Ceiling((size/1024)*1000)/1000;
                     }
 
-                    result.Add(new Torrent
+                    result.Add(new TorrentSearchResult
                     {
                         Name = Regexes.HTMLTags.Replace(name, string.Empty),
                         DetailsLink = Regexes.HTMLTags.Replace(Regexes.RowName.Match(m.Value).Groups[1].Value, string.Empty),

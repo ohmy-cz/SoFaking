@@ -7,7 +7,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 {
     public static class TorrentRating
     {
-        public static Torrent GetBestTorrent(List<Torrent> torrents)
+        public static TorrentSearchResult GetBestTorrent(List<TorrentSearchResult> torrents)
         {
             if(torrents == null || torrents.Count() == 0)
             {
@@ -32,7 +32,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
                 .FirstOrDefault();
         }
 
-        public static int CalculateTorrentScore(Torrent torrent)
+        public static int CalculateTorrentScore(TorrentSearchResult torrent)
         {
             var score = 0;
             var name = torrent.Name.ToLowerInvariant();
