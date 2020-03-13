@@ -21,7 +21,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
         {
             using (var db = _dbContextFactory.CreateDbContext())
             {
-                if(db.Movies.Where(x => x.ImdbId == movie.ImdbId).Any())
+                if(!string.IsNullOrWhiteSpace(movie.ImdbId) && db.Movies.Where(x => x.ImdbId == movie.ImdbId).Any())
                 {
                     return false;
                 }
@@ -45,6 +45,14 @@ namespace net.jancerveny.sofaking.BusinessLogic
                 }
                 db.Movies.Remove(movie);
                 await db.SaveChangesAsync();
+            }
+        }
+
+        public List<Movie> GetMovies()
+        {
+            using (var db = _dbContextFactory.CreateDbContext())
+            {
+                return db.Movies.ToList();
             }
         }
     }

@@ -44,7 +44,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
                     Arguments = new TransmissionRequestObjectArguments
                     {
                         Paused = false,
-                        DownloadDir = "/mnt/Movies", // TODO: Make dynamic
+                        DownloadDir = _transmissionConfiguration.DownloadDir,
                         Filename = magnetLink
                     }
                 };

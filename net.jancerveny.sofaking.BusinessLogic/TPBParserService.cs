@@ -11,13 +11,28 @@ using System.Web;
 
 namespace net.jancerveny.sofaking.BusinessLogic
 {
-    public class TPBCrawlerService
+    public class TPBParserService
     {
+        private static class Regexes
+        {
+            public static Regex SearchResults => new Regex(@"<table id=""searchResult"">(.+)<\/table>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            public static Regex Row => new Regex(@"<tr(?:\sclass=""alt"")?>(.+?)<\/tr>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            public static Regex RowName => new Regex(@"<div class=""detName"">\s*<a href=""(.+?)""(?:.+?)?title=""Details\sfor (.+?)"">", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            public static Regex RowMagnetLink => new Regex(@"<a href=""(magnet:.+?)"">", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            public static Regex RowSeedersLeeches => new Regex(@"<td(?:.*?)?>(\d+)<\/td>\s*<td(?:.*?)?>(\d+)<\/td>\s*<\/tr>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            public static Regex RowSizeGiB => new Regex(@"Size\s([\d\.]+)\sGiB", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            public static Regex RowSizeMiB => new Regex(@"Size\s([\d\.]+)\sMiB", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            public static Regex PagingRow => new Regex(@"<tr>\s*<td colspan=""9""(?:.+?)?>(.+)<\/td>\s*<\/tr>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            public static Regex PagingRowPage => new Regex(@"<a(?:.+?)>(\d+)<\/a>\s", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            public static Regex HTMLTags => new Regex(@"<[^>]*>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        }
+
         private int _pagingDepthLimit = 3;
         private int _maxAttempts = 10;
         private readonly IHttpClientFactory _clientFactory;
         private static Regex isSeries = new Regex(@"\ss\d+$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        public TPBCrawlerService(IHttpClientFactory clientFactory)
+
+        public TPBParserService(IHttpClientFactory clientFactory)
         {
             if (clientFactory == null) throw new ArgumentNullException(nameof(clientFactory));
             _clientFactory = clientFactory;
@@ -76,10 +91,8 @@ namespace net.jancerveny.sofaking.BusinessLogic
         {
             var result = new List<TorrentSearchResult>();
             var request = new HttpRequestMessage(HttpMethod.Get, $"{host}search/{HttpUtility.UrlEncode(query)}/{pageNumber}/{(int)TPBOrderByEnum.SeedersDesc}/{(int)category}");
-            HttpResponseMessage response;
 
-            response = await client.SendAsync(request);
-
+            HttpResponseMessage response = await client.SendAsync(request);
             if (!response.IsSuccessStatusCode)
             {
                 throw new ParsingErrorException($"Unexpected HTTP response code: {response.StatusCode}");
@@ -144,24 +157,10 @@ namespace net.jancerveny.sofaking.BusinessLogic
                 }
             }
 
-            return result;
+            return result
+                .OrderByDescending(x=> x.Seeders)
+                .ThenByDescending(x => x.SizeGb)
+                .ToList();
         }
-    }
-
-    /// <summary>
-    /// Compiled Regexes for better performance
-    /// </summary>
-    public static class Regexes
-    {
-        public static Regex SearchResults => new Regex(@"<table id=""searchResult"">(.+)<\/table>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        public static Regex Row => new Regex(@"<tr(?:\sclass=""alt"")?>(.+?)<\/tr>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        public static Regex RowName => new Regex(@"<div class=""detName"">\s*<a href=""(.+?)""(?:.+?)?title=""Details\sfor (.+?)"">", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        public static Regex RowMagnetLink => new Regex(@"<a href=""(magnet:.+?)"">", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        public static Regex RowSeedersLeeches => new Regex(@"<td(?:.*?)?>(\d+)<\/td>\s*<td(?:.*?)?>(\d+)<\/td>\s*<\/tr>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        public static Regex RowSizeGiB => new Regex(@"Size\s([\d\.]+)\sGiB", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        public static Regex RowSizeMiB => new Regex(@"Size\s([\d\.]+)\sMiB", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        public static Regex PagingRow => new Regex(@"<tr>\s*<td colspan=""9""(?:.+?)?>(.+)<\/td>\s*<\/tr>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        public static Regex PagingRowPage => new Regex(@"<a(?:.+?)>(\d+)<\/a>\s", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        public static Regex HTMLTags => new Regex(@"<[^>]*>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
     }
 }

@@ -4,7 +4,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 namespace net.jancerveny.sofaking.DataLayer.Migrations
 {
-    public partial class InitialCreate : Migration
+    public partial class Initial : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -14,7 +14,7 @@ namespace net.jancerveny.sofaking.DataLayer.Migrations
                 {
                     Id = table.Column<int>(nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    Name = table.Column<string>(nullable: true),
+                    Title = table.Column<string>(nullable: true),
                     Added = table.Column<DateTime>(nullable: false),
                     Deleted = table.Column<DateTime>(nullable: true),
                     TorrentName = table.Column<string>(nullable: true),
@@ -22,9 +22,10 @@ namespace net.jancerveny.sofaking.DataLayer.Migrations
                     TorrentClientTorrentId = table.Column<int>(nullable: false),
                     SizeGb = table.Column<double>(nullable: false),
                     Status = table.Column<int>(nullable: false),
-                    ImdbUrl = table.Column<string>(nullable: true),
+                    ImdbId = table.Column<string>(nullable: true),
                     MetacriticScore = table.Column<int>(nullable: false),
-                    ImdbScore = table.Column<double>(nullable: false)
+                    ImdbScore = table.Column<double>(nullable: false),
+                    Genres = table.Column<int>(nullable: false)
                 },
                 constraints: table =>
                 {

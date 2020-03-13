@@ -11,17 +11,5 @@ namespace net.jancerveny.sofaking.DataLayer
         {
         }
         public DbSet<Movie> Movies { get; set; }
-
-        //protected override void OnConfiguring(DbContextOptionsBuilder options)
-        //{
-        //    var builder = new ConfigurationBuilder();
-        //    builder
-        //        .SetBasePath(Directory.GetCurrentDirectory())
-        //        .AddJsonFile("appsettings.Production.json", optional: false); // TODO: Make this switch depending on the enviroment
-
-        //    var configuration = builder.Build();
-
-        //    options.UseNpgsql(configuration.GetConnectionString("Db"));
-        //}
     }
 }

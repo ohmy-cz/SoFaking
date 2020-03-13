@@ -10,6 +10,6 @@ namespace net.jancerveny.sofaking.BusinessLogic.Models
         [JsonPropertyName("hashString")]
         public string Hash { get; set; }
         [JsonPropertyName("name")]
-        public string Name { get; set; }
+        public string TorrentName { get; set; }
     }
 }

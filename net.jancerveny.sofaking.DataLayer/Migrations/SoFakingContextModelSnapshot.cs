@@ -32,6 +32,9 @@ namespace net.jancerveny.sofaking.DataLayer.Migrations
                     b.Property<DateTime?>("Deleted")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<int>("Genres")
+                        .HasColumnType("integer");
+
                     b.Property<string>("ImdbId")
                         .HasColumnType("text");
 
@@ -41,14 +44,14 @@ namespace net.jancerveny.sofaking.DataLayer.Migrations
                     b.Property<int>("MetacriticScore")
                         .HasColumnType("integer");
 
-                    b.Property<string>("Name")
-                        .HasColumnType("text");
-
                     b.Property<double>("SizeGb")
                         .HasColumnType("double precision");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("text");
 
                     b.Property<int>("TorrentClientTorrentId")
                         .HasColumnType("integer");

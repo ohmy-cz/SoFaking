@@ -4,5 +4,6 @@
     {
         int TorrentId { get; set; }
         string Hash { get; set; }
+        string TorrentName { get; set; }
     }
 }

@@ -1,11 +1,16 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace net.jancerveny.sofaking.DataLayer.Models
 {
     public class Movie
     {
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int Id { get; set; }
-        public string Name { get; set; }
+        public string Title { get; set; }
         public DateTime Added { get; set; }
         public DateTime? Deleted { get; set; }
         public string TorrentName { get; set; }
@@ -16,5 +21,11 @@ namespace net.jancerveny.sofaking.DataLayer.Models
         public string ImdbId { get; set; }
         public int MetacriticScore { get; set; }
         public double ImdbScore { get; set; }
+        public GenreFlags Genres { get; set; }
+        public Movie()
+        {
+            Added = DateTime.Now;
+            Status = MovieStatusEnum.Queued;
+        }
     }
 }
