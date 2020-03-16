@@ -287,19 +287,26 @@ namespace net.jancerveny.sofaking.client.console
                     while (true)
                     {
                         var selectedTorrent = bestTorrent;
-                        var key2 = Console.ReadKey();
-                        if (key2.KeyChar == 'n')
+                        string input = string.Empty;
+                        if (foundTorrents.Count() < 10)
+                        {
+                            input = Console.ReadKey().KeyChar.ToString();
+                        } else
+                        {
+                            input = Console.ReadLine();
+                        }
+                        if (input == "n")
                         {
                             restartFlag2 = true;
                             break;
                         }
 
-                        if (key2.KeyChar == 'y'  &&  bestTorrent == null)
+                        if (input == "y" && bestTorrent == null)
                         {
                             continue;
                         }
 
-                        if (key2.KeyChar != 'y' && int.TryParse(key2.KeyChar.ToString(), out int selectedTorrentIndex))
+                        if (input != "y" && int.TryParse(input, out int selectedTorrentIndex))
                         {
                             selectedTorrent = foundTorrents.ElementAt(selectedTorrentIndex - 1);
                         }

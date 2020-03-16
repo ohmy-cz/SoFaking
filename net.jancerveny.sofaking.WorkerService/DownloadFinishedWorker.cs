@@ -58,7 +58,7 @@ namespace net.jancerveny.sofaking.WorkerService
 						continue;
 					}
 
-					_logger.LogInformation("Found following torrents:\r\n" + string.Join("\r\n", torrents.Select(x => x.Name)));
+					_logger.LogInformation($"Found {torrents.Count()} torrents");
 				}  catch(Exception ex)
 				{
 					_logger.LogError("Handling movies failed", ex);
@@ -137,10 +137,8 @@ namespace net.jancerveny.sofaking.WorkerService
 
 				var path = Path.Combine(_configuration.FinishedDownloadsDir, torrent.Name);
 
-				// TODO: It *can* be a single file.
-				if (Directory.Exists(path))
+				if (Directory.Exists(path) || File.Exists(path))
 				{
-					// Make sure we don't encode twice
 					if (movieJob.Status == MovieStatusEnum.Downloaded && await MediaFileNeedsTranscoding(GetVideoFile(path)))
 					{
 						await QueueOrStartTranscoding(movieJob.Id, torrent, cancellationToken);
@@ -148,10 +146,9 @@ namespace net.jancerveny.sofaking.WorkerService
 					}
 
 					await CleanUpAndMove(path, movieJob.Title, movieJob.ImageUrl, cancellationToken);
+					await _movieService.SetMovieStatus(movieJob.Id, MovieStatusEnum.Finished);
+					await _torrentClient.RemoveTorrent(torrent.Id);
 				}
-
-				await _movieService.SetMovieStatus(movieJob.Id, MovieStatusEnum.Finished);
-				await _torrentClient.RemoveTorrent(torrent.Id);
 			}
 		}
 
@@ -205,37 +202,6 @@ namespace net.jancerveny.sofaking.WorkerService
 				}
 			}
 		}
-
-		//private async Task HandleTranscodingMovies(IReadOnlyList<ITorrentClientTorrent> torrents, CancellationToken cancellationToken)
-		//{
-		//	var transcodingMovies = _movieService.GetMovies()
-		//			.Where(x =>
-		//				x.Deleted == null &&
-		//				(x.Status == MovieStatusEnum.TranscodingFinished)
-		//			);
-
-		//	foreach (var torrent in torrents)
-		//	{
-		//		var movieJob = transcodingMovies.Where(x => x.TorrentClientTorrentId == torrent.Id).FirstOrDefault();
-		//		if (movieJob == null)
-		//		{
-		//			continue;
-		//		}
-
-		//		var path = Path.Combine(_configuration.FinishedDownloadsDir, torrent.Name);
-
-		//		if (File.Exists(path))
-		//		{
-		//			//  Transcoding finished!
-		//			await _movieService.SetMovieStatus(movieJob.Id, MovieStatusEnum.TranscodingFinished);
-
-		//			if (await CleanUpAndMove(path, movieJob.Title, movieJob.ImageUrl, cancellationToken))
-		//			{
-		//				await _movieService.SetMovieStatus(movieJob.Id, MovieStatusEnum.Finished);
-		//			}
-		//		}
-		//	}
-		//}
 
 		private async Task<bool> CleanUpAndMove(string sourcePath, string movieName, string coverImageUrl, CancellationToken cancellationToken)
 		{
@@ -310,25 +276,29 @@ namespace net.jancerveny.sofaking.WorkerService
 			});
 		}
 
-		private bool HasAcceptableVideo(IMediaInfo mediaInfo, FileInfo videoFile) => _configuration.AcceptedVideoCodecs.Contains(mediaInfo.VideoCodec) && videoFile.Length <= (_configuration.MaxPS4FileSizeGb * 1024 * 1024 * 1024);
+		private bool HasAcceptableVideo(IMediaInfo mediaInfo, FileInfo videoFile) => _configuration.AcceptedVideoCodecs.Contains(mediaInfo.VideoCodec) && int.Parse(mediaInfo.VideoResolution.Split("x")[0]) <= int.Parse(_configuration.Resolution.Split("x")[0]) && videoFile.Length <= (_configuration.MaxPS4FileSizeGb * 1024 * 1024 * 1024);
 		private bool HasAcceptableAudio(IMediaInfo mediaInfo) => _configuration.AcceptedAudioCodecs.Contains(mediaInfo.AudioCodec);
 
 		private async Task<bool> MediaFileNeedsTranscoding(string videoFile)
 		{
+			if(File.Exists(GetTranscodedFileName(videoFile)))
+			{
+				return false;
+			}
+
 			var mediaInfo = await _encoderService.GetMediaInfo(videoFile);
 			
 			if(HasAcceptableVideo(mediaInfo, new FileInfo(videoFile)) && HasAcceptableAudio(mediaInfo))
 			{
-				return true;
+				return false;
 			}
 
-			return false;
+			return true;
 		}
 
 		private async Task StartTranscoding(int movieJobId, ITorrentClientTorrent torrent, CancellationToken cancellationToken)
 		{
 			var sourcePath = Path.Combine(_configuration.FinishedDownloadsDir, torrent.Name);
-			var transcodingTempPath = _configuration.TranscodingTempDir;
 			await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingStarted);
 
 			var videoFile = GetVideoFile(sourcePath);
@@ -345,7 +315,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			}
 
 			await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.Transcoding);
-			_encoderService.StartEncoding(videoFile, transcodingFinishedPath, flags, async () => { await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingFinished); }, cancellationToken);
+			_encoderService.StartTranscoding(videoFile, transcodingFinishedPath, flags, async () => { await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingFinished); }, async () => { await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingError); }, cancellationToken);
 		}
 
 		private async Task QueueOrStartTranscoding(int movieJobId, ITorrentClientTorrent torrent, CancellationToken cancellationToken)
@@ -362,11 +332,21 @@ namespace net.jancerveny.sofaking.WorkerService
 		private static string GetTranscodedFileName(string fileName) 
 		{
 			var m = Regexes.TranscodedFileNamePattern.Match(fileName);
+			if(!m.Success)
+			{
+				return null;
+			}
+
 			return $"{m.Groups[1].Value}.TRANSCODED{m.Groups[2].Value}";
 		}
 
 		private static string GetVideoFile(string sourcePath)
 		{
+			if(File.Exists(sourcePath))
+			{
+				return sourcePath;
+			}
+
 			if(!Directory.Exists(sourcePath))
 			{
 				throw new Exception("Folder does not exist");
@@ -390,6 +370,10 @@ namespace net.jancerveny.sofaking.WorkerService
 				}
 
 				File.Move(sourcePath, Path.Combine(destinationPath, Path.GetFileName(sourcePath)));
+				if (File.Exists(GetTranscodedFileName(sourcePath)))
+				{
+					File.Move(sourcePath, Path.Combine(destinationPath, GetTranscodedFileName(Path.GetFileName(sourcePath))));
+				}
 				return;
 			}
 
@@ -400,8 +384,6 @@ namespace net.jancerveny.sofaking.WorkerService
 			{
 				foreach (var subSourcePath in Directory.GetFileSystemEntries(sourcePath))
 				{
-					//Path.GetDirectoryName(subSourcePath)
-					//var destinationDir = Path.Combine(destinationPath, );
 					var subDestinationPath = destinationPath;
 					if(Directory.Exists(subSourcePath))
 					{
@@ -409,17 +391,6 @@ namespace net.jancerveny.sofaking.WorkerService
 					}
 					MoveAllRecursively(subSourcePath, subDestinationPath);
 				}
-				//foreach (var subDirectory in Directory.GetDirectories(sourcePath))
-				//{
-				//	var destinationDir = Path.Combine(destinationPath, Path.GetDirectoryName(subDirectory));
-				//	MoveAllRecursively(subDirectory, destinationDir);
-				//}
-
-				//// Move all  files in the directory
-				//foreach (var file in Directory.GetFiles(sourcePath))
-				//{
-				//	File.Move(file, Path.Combine(destinationPath, Path.GetFileName(file)));
-				//}
 			}
 		}
 	}

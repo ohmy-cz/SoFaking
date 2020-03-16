@@ -19,6 +19,7 @@ namespace net.jancerveny.sofaking.Common.Constants
             { "DTS-HD.MA 7.1", 85 },
             { "DTS-MA", 85 },
             { "DTS-HD", 85 },
+            { "DTS-ES", 85 },
             { "DTS5.1", 80 },
             { "DDP5.1", 75 },
             { "DD5.1", 70 },

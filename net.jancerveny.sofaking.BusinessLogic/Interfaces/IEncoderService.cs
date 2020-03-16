@@ -8,7 +8,7 @@ namespace net.jancerveny.sofaking.BusinessLogic.Interfaces
 {
 	public interface IEncoderService
 	{
-		void StartEncoding(string sourcePath, string destinationPath, EncodingTargetFlags target, Action onComplete, CancellationToken cancellationToken);
+		void StartTranscoding(string sourcePath, string destinationPath, EncodingTargetFlags target, Action onComplete, Action onError, CancellationToken cancellationToken);
 		Task<IMediaInfo> GetMediaInfo(string filePath);
 	}
 }

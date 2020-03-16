@@ -35,7 +35,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			};
 		}
 
-		public void StartEncoding(string sourcePath, string destinationPath, EncodingTargetFlags action, Action onComplete, CancellationToken cancellationToken)
+		public void StartTranscoding(string sourcePath, string destinationPath, EncodingTargetFlags action, Action onComplete, Action onError, CancellationToken cancellationToken)
 		{
 			if(!string.IsNullOrWhiteSpace(_busyWith))
 			{
@@ -52,7 +52,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				}
 
 				var arguments = $"-i \"{sourcePath}\" " +
-					$"-c:v {(action.HasFlag(EncodingTargetFlags.Video) ? _configuration.OutputVideoCodec + $" -b:v {_configuration.OutputVideoBitrateMbits}M -s hd1080" : "copy")} " +
+					$"-c:v {(action.HasFlag(EncodingTargetFlags.Video) ? _configuration.OutputVideoCodec + $" -b:v {_configuration.OutputVideoBitrateMbits}M -vf scale=1080:-2" : "copy")} " +
 					//"-ss 0 -t 120 " + // Debug only - take only two minutes
 					"-preset veryslow " +
 					"-tune film " +
@@ -69,6 +69,8 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				
 				ffmpeg.Error += (object sender, ConversionErrorEventArgs e) => {
 					_logger.LogError($"Encoding error {e.Exception.ExitCode}", e.Exception.InnerException);
+					_busyWith = null;
+					onError();
 				};
 				
 				ffmpeg.Complete += (object sender, ConversionCompleteEventArgs e) =>

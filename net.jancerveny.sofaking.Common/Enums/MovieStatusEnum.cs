@@ -9,5 +9,6 @@
     TranscodingStarted,
     Transcoding,
     TranscodingFinished,
+    TranscodingError,
     Finished
 }
