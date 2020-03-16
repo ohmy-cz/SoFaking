@@ -1,108 +1,106 @@
-﻿using net.jancerveny.sofaking.BusinessLogic.Interfaces;
+﻿using Microsoft.Extensions.Logging;
+using net.jancerveny.sofaking.BusinessLogic.Interfaces;
 using net.jancerveny.sofaking.BusinessLogic.Models;
 using net.jancerveny.sofaking.Common.Models;
 using System;
-using System.Linq;
+using System.Collections.Generic;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace net.jancerveny.sofaking.BusinessLogic
 {
     public class TransmissionService : ITorrentClientService
     {
-        private readonly IHttpClientFactory _clientFactory;
+        private readonly TransmissionHttpClientFactory _clientFactory;
         private readonly TransmissionConfiguration _transmissionConfiguration;
-        private readonly AuthenticationHeaderValue _auth;
-        private static string _sessionId;
-        private static DateTime? _sessionIdLastUpdated;
-        public TransmissionService(TransmissionConfiguration transmissionConfiguration, IHttpClientFactory clientFactory)
+        private readonly ILogger<TransmissionService> _logger;
+
+        public TransmissionService(ILogger<TransmissionService> logger, TransmissionConfiguration transmissionConfiguration, TransmissionHttpClientFactory clientFactory)
         {
             if (transmissionConfiguration == null) throw new ArgumentNullException(nameof(transmissionConfiguration));
             if (clientFactory == null) throw new ArgumentNullException(nameof(clientFactory));
+            _logger = logger;
             _transmissionConfiguration = transmissionConfiguration;
             _clientFactory = clientFactory;
-            _auth = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_transmissionConfiguration.Username}:{_transmissionConfiguration.Password}")));
         }
 
         public async Task<ITorrentAddedResponse> AddTorrentAsync(string magnetLink)
         {
-            await GetFreshSessionId();
-            // TODO: Refactor this to make own Transmission-specific client
+            _logger.LogInformation($"Adding a new Torrent: {magnetLink}");
             using (var client = _clientFactory.CreateClient())
             {
-                client.DefaultRequestHeaders.Authorization = _auth;
-                client.DefaultRequestHeaders.Add("Accept", "application/json, text/javascript, */*; q=0.01");
-                client.DefaultRequestHeaders.Add("X-Transmission-Session-Id", _sessionId);
-                client.DefaultRequestHeaders.Add("X-Requested-With", "XMLHttpRequest");
-
-                var transmissionRequestObject = new TransmissionRequestObject { 
-                    Method = "torrent-add",
-                    Arguments = new TransmissionRequestObjectArguments
+                var transmissionRequestObject = new TransmissionTorrentAddRequestObject { 
+                    Arguments = new TransmissionTorrentAddRequestArguments
                     {
                         Paused = false,
-                        DownloadDir = _transmissionConfiguration.DownloadDir,
+                        DownloadDir = _transmissionConfiguration.DownloadDir, // TODO: Can be read from previous RPC
                         Filename = magnetLink
                     }
                 };
 
-                var response = await client.PostAsync($"{_transmissionConfiguration.Host}:{_transmissionConfiguration.Port}/transmission/rpc", new StringContent(JsonSerializer.Serialize(transmissionRequestObject), Encoding.UTF8, "application/json"));
+                var response = await client.PostAsync(string.Empty, new StringContent(JsonSerializer.Serialize(transmissionRequestObject), Encoding.UTF8, "application/json"));
 
                 if (!response.IsSuccessStatusCode)
                 {
                     throw new Exception($"Unexpected HTTP response code: {response.StatusCode}, {await response.Content.ReadAsStringAsync()}");
                 }
 
-                return JsonSerializer.Deserialize<TransmissionResponseObject>(await response.Content.ReadAsStringAsync())?.Arguments?.TorrentAdded;
+                return JsonSerializer.Deserialize<TransmissionTorrentAddResponse>(await response.Content.ReadAsStringAsync())?.Arguments?.TorrentAdded;
             }
         }
 
-        private async Task GetFreshSessionId()
+        /// <summary>
+        /// Get status of all torrents
+        /// </summary>
+        public async Task<IReadOnlyList<ITorrentClientTorrent>> GetAllTorrents()
         {
-            if(_sessionId != string.Empty && _sessionIdLastUpdated != null && _sessionIdLastUpdated < DateTime.Now.AddMinutes(-5))
-            {
-                return;
-            }
+            _logger.LogInformation($"Getting all Transmission torrents");
             using (var client = _clientFactory.CreateClient())
             {
-                client.DefaultRequestHeaders.Authorization = _auth;
-                var response = await client.GetAsync($"{_transmissionConfiguration.Host}:{_transmissionConfiguration.Port}/transmission/rpc");
-                _sessionId = response.Headers.GetValues("X-Transmission-Session-Id").First();
-                _sessionIdLastUpdated = DateTime.Now;
+                var transmissionRequestObject = new TransmissionTorrentGetRequest
+                {
+                    Arguments = new TransmissionTorrentGetRequestArguments
+                    {
+                        //IDs = ids
+                    }
+                };
+
+                var response = await client.PostAsync(string.Empty, new StringContent(JsonSerializer.Serialize(transmissionRequestObject), Encoding.UTF8, "application/json"));
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new Exception($"Unexpected HTTP response code: {response.StatusCode}, {await response.Content.ReadAsStringAsync()}");
+                }
+
+                var json = await response.Content.ReadAsStringAsync();
+                return JsonSerializer.Deserialize<TransmissionTorrentGetResponse>(json).Arguments?.Torrents;
             }
         }
-    }
 
-    // TODO: Refactor the stuff below
-    public class TransmissionRequestObject
-    {
-        [JsonPropertyName("method")]
-        public string Method { get; set; }
-        [JsonPropertyName("arguments")]
-        public TransmissionRequestObjectArguments Arguments { get; set; }
-    }
+        public async Task<bool> RemoveTorrent(int id)
+        {
+            _logger.LogDebug($"Removing torrent {id}");
+            using (var client = _clientFactory.CreateClient())
+            {
+                var transmissionRequestObject = new TransmissionTorrentRemoveRequest
+                {
+                    Arguments = new TransmissionTorrentRemoveRequestArguments
+                    {
+                        IDs = new int[] { id }
+                    }
+                };
 
-    public class TransmissionRequestObjectArguments
-    {
-        [JsonPropertyName("paused")]
-        public bool Paused { get; set; }
-        [JsonPropertyName("download-dir")]
-        public string DownloadDir { get; set; }
-        [JsonPropertyName("filename")]
-        public string Filename { get; set; }
-    }
-    public class TransmissionResponseObject
-    {
-        [JsonPropertyName("arguments")]
-        public TransmissionResponseObjectArguments Arguments { get; set; }
-    }
+                var response = await client.PostAsync(string.Empty, new StringContent(JsonSerializer.Serialize(transmissionRequestObject), Encoding.UTF8, "application/json"));
 
-    public class TransmissionResponseObjectArguments
-    {
-        [JsonPropertyName("torrent-added")]
-        public TorrentAddedResponse TorrentAdded { get; set; }
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new Exception($"Unexpected HTTP response code: {response.StatusCode}, {await response.Content.ReadAsStringAsync()}");
+                }
+
+                return true;
+            }
+        }
     }
 }

@@ -36,6 +36,11 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
         public async Task<IReadOnlyCollection<IVerifiedMovie>> Search(string queryRaw)
         {
+            if(string.IsNullOrWhiteSpace(queryRaw))
+            {
+                return null;
+            }
+
             string jsonResponse;
 
             // Get all movie suggestions first
@@ -57,6 +62,11 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
             // search for movie details in parallel, as every movie needs to fetch na URL with its details.
             // sometimes, an actor (or other object type) can be returned, so we're looking for presence of the release year.
+            if(imdbResponse.Matches == null)
+            {
+                return null;
+            }
+
             var moviesWithDetails = imdbResponse.Matches
                 .Where(x => Regexes.ValidImdbObjectId.Match(x.Id).Success)
                 .Select(async imdbMatch => {
@@ -86,7 +96,11 @@ namespace net.jancerveny.sofaking.BusinessLogic
                     }
                 });
 
-            return ((await Task.WhenAll(moviesWithDetails)).Where(x => x != null).ToList());
+            return (await Task.WhenAll(moviesWithDetails))
+                .Where(x => x != null)
+                .OrderByDescending(x => x.Score)
+                .ThenByDescending(x => x.ScoreMetacritic)
+                .ToList();
         }
     }
 }

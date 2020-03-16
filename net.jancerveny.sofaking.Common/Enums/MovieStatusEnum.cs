@@ -1,9 +1,13 @@
 ﻿public enum MovieStatusEnum
 {
     WatchingFor,
-    Queued,
+    DownloadQueued,
     Downloading,
+    DownloadingPaused,
     Downloaded,
+    TranscodingQueued,
+    TranscodingStarted,
     Transcoding,
+    TranscodingFinished,
     Finished
 }

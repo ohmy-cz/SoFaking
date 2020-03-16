@@ -61,6 +61,8 @@ namespace net.jancerveny.sofaking.Common.Constants
             { "R5", BannedTag },
             { "scr", BannedTag },
             { "480p", BannedTag },
+            { "1080i", BannedTag },
+            { "HDTV", BannedTag },
             { "2160p", BannedTag }, // My screen doesn't support this format, skipping
             { "4K", BannedTag }, // My screen doesn't support this format, skipping
             { "UHD", BannedTag }, // My screen doesn't support this format, skipping

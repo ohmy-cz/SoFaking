@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using net.jancerveny.sofaking.BusinessLogic;
 using net.jancerveny.sofaking.BusinessLogic.Interfaces;
 using net.jancerveny.sofaking.Common.Constants;
@@ -16,7 +17,7 @@ namespace net.jancerveny.sofaking.client.console
 {
     class Program
     {
-        private static ServiceProvider _serviceProvider;
+        //private static ServiceProvider _serviceProvider;
         static async Task Main(string[] args)
         {
             IVerifiedMovie selectedMovie = null;
@@ -35,46 +36,180 @@ namespace net.jancerveny.sofaking.client.console
             }
             TPBProxies.SetProxies(proxies.ToArray());
 
+
             var transmissionConfiguration = new TransmissionConfiguration();
             configuration.GetSection("Transmission").Bind(transmissionConfiguration);
-            _serviceProvider = new ServiceCollection()
-                .AddLogging()
-                .AddHttpClient()
-                .AddSingleton(transmissionConfiguration)
-                .AddSingleton(new SoFakingContextFactory())
-                .AddSingleton<MovieService>()
-                .AddSingleton<TPBParserService>()
-                .AddSingleton<ITorrentClientService, TransmissionService>()
-                .AddSingleton<IVerifiedMovieSearchService, ImdbService>()
-                .BuildServiceProvider();
 
-            while (true)
+            //TransmissionHttpClient.Configure(transmissionConfiguration)
+
+            var builder1 = new HostBuilder()
+                .ConfigureServices((hostContext, services) =>
+                {
+                    services
+                        .AddHttpClient()
+                        .AddSingleton(transmissionConfiguration)
+                        .AddSingleton<TransmissionHttpClientFactory>()
+                        .AddSingleton(new SoFakingContextFactory())
+                        .AddSingleton<MovieService>()
+                        .AddSingleton<TPBParserService>()
+                        .AddSingleton<ITorrentClientService, TransmissionService>()
+                        .AddSingleton<IVerifiedMovieSearchService, ImdbService>();
+                }).UseConsoleLifetime();
+
+            var host = builder1.Build();
+
+            using (var serviceScope = host.Services.CreateScope())
             {
-                var movieService = _serviceProvider.GetService<MovieService>();
-                Console.Clear();
-                Console.ResetColor();
-                Console.WriteLine("Enter a movie name in English to look for: (CTRL+C to quit)");
-                var query = Console.ReadLine();
-                var verifiedMovieSearch = _serviceProvider.GetService<IVerifiedMovieSearchService>();
-                var verifiedMovies = await verifiedMovieSearch.Search(query);
-                if (verifiedMovies.Count == 0)
+                var serviceProvider = serviceScope.ServiceProvider;
+
+
+
+
+
+
+
+
+
+                while (true)
                 {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine("No results found.");
+                    var movieService = serviceProvider.GetService<MovieService>();
+                    Console.Clear();
                     Console.ResetColor();
-                    continue;
-                }
-
-                if (verifiedMovies.Count > 1)
-                {
-                    Console.WriteLine("There are several matches:");
+                    Console.WriteLine("Enter a movie name in English to look for: (CTRL+C to quit)");
+                    var query = Console.ReadLine();
+                    var verifiedMovieSearch = serviceProvider.GetService<IVerifiedMovieSearchService>();
+                    var verifiedMovies = await verifiedMovieSearch.Search(query);
                     var movieJobs = movieService.GetMovies();
-
-                    for (var i = 0; i < verifiedMovies.Count(); i++)
+                    if (verifiedMovies == null || verifiedMovies.Count == 0)
                     {
-                        var vm = verifiedMovies.ElementAt(i);
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine("No results found.");
+                        Console.ResetColor();
+                        Console.ReadKey();
+                        continue;
+                    }
+
+                    if (verifiedMovies.Count == 1)
+                    {
+                        selectedMovie = verifiedMovies.ElementAt(0);
+                    }
+
+                    if (verifiedMovies.Count > 1)
+                    {
+                        Console.WriteLine("There are several matches:");
+
+                        for (var i = 0; i < verifiedMovies.Count(); i++)
+                        {
+                            var vm = verifiedMovies.ElementAt(i);
+                            var status = string.Empty;
+                            var movieJob = movieJobs.Where(x => x.ImdbId == vm.Id).FirstOrDefault();
+                            if (movieJob != null)
+                            {
+                                switch (movieJob.Status)
+                                {
+                                    case MovieStatusEnum.Downloaded:
+                                        Console.ForegroundColor = ConsoleColor.DarkGreen;
+                                        status = "Dlded";
+                                        break;
+                                    case MovieStatusEnum.Downloading:
+                                        Console.ForegroundColor = ConsoleColor.Yellow;
+                                        status = "Dlding";
+                                        break;
+                                    case MovieStatusEnum.Finished:
+                                        Console.ForegroundColor = ConsoleColor.Green;
+                                        status = "Fnishd";
+                                        break;
+                                    case MovieStatusEnum.DownloadQueued:
+                                        Console.ForegroundColor = ConsoleColor.DarkYellow;
+                                        status = "Queued";
+                                        break;
+                                    case MovieStatusEnum.Transcoding:
+                                        Console.ForegroundColor = ConsoleColor.Magenta;
+                                        status = "Transc";
+                                        break;
+                                    case MovieStatusEnum.WatchingFor:
+                                        Console.ForegroundColor = ConsoleColor.Cyan;
+                                        status = "Wtchng";
+                                        break;
+                                }
+
+                                if (movieJob.Deleted != null)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Cyan;
+                                    status = "\u2713";
+                                }
+                            }
+
+                            Console.WriteLine($"[{(i+1)}]\t{vm.Score}/10\t{vm.ScoreMetacritic} Metacritic\t{status}\t{vm.Title} ({vm.ReleaseYear})");
+
+                            if (movieJob != null)
+                                Console.ResetColor();
+                        }
+                        Console.WriteLine("[n] for new search");
+
+                        bool restartFlag1 = false;
+                        while (true)
+                        {
+                            var key1 = Console.ReadKey();
+                            if (key1.KeyChar == 'n')
+                            {
+                                restartFlag1 = true;
+                                break;
+                            }
+
+                            if (int.TryParse(key1.KeyChar.ToString(), out int selectedMovieIndex))
+                            {
+                                selectedMovie = verifiedMovies.ElementAt(selectedMovieIndex-1);
+                                break;
+                            }
+                        }
+
+                        if (restartFlag1)
+                        {
+                            continue;
+                        }
+                    }
+
+                    var torrentSearchService = serviceProvider.GetService<TPBParserService>();
+                    var foundTorrents = await torrentSearchService.Search($"{selectedMovie.Title} {selectedMovie.ReleaseYear}");
+                    if (foundTorrents.Count == 0)
+                    {
+                        Console.Write("\r\n");
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine("No torrents found.");
+                        Console.ResetColor();
+
+                        await AddToWatchlistPrompt(new Movie
+                        {
+                            Title = selectedMovie.Title,
+                            ImdbId = selectedMovie.Id,
+                            ImdbScore = selectedMovie.Score,
+                            MetacriticScore = selectedMovie.ScoreMetacritic,
+                            TorrentName = query,
+                            ImageUrl = selectedMovie.ImageUrl,
+                            Status = MovieStatusEnum.WatchingFor
+                        }, movieService);
+                        continue;
+                    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+                    Console.Clear();
+                    for (var i = 0; i < foundTorrents.Count(); i++)
+                    {
+                        var t = foundTorrents.ElementAt(i);
                         var status = string.Empty;
-                        var movieJob = movieJobs.Where(x => x.ImdbId == vm.Id).FirstOrDefault();
+                        var movieJob = movieJobs.Where(x => x.TorrentName == t.Name).FirstOrDefault();
                         if (movieJob != null)
                         {
                             switch (movieJob.Status)
@@ -91,7 +226,7 @@ namespace net.jancerveny.sofaking.client.console
                                     Console.ForegroundColor = ConsoleColor.Green;
                                     status = "Fnishd";
                                     break;
-                                case MovieStatusEnum.Queued:
+                                case MovieStatusEnum.DownloadQueued:
                                     Console.ForegroundColor = ConsoleColor.DarkYellow;
                                     status = "Queued";
                                     break;
@@ -105,143 +240,151 @@ namespace net.jancerveny.sofaking.client.console
                                     break;
                             }
 
-                            if(movieJob.Deleted != null)
+                            if (movieJob.Deleted != null)
                             {
                                 Console.ForegroundColor = ConsoleColor.Cyan;
                                 status = "\u2713";
                             }
                         }
 
-                        Console.WriteLine($"[{i}]\t{vm.Score}/10\t{vm.ScoreMetacritic} Metacritic\t{status}\t{vm.Title} ({vm.ReleaseYear})");
+                        Console.WriteLine($"[{(i+1)}]\t{t.Seeders}\t{t.SizeGb}Gb\t{t.Name}");
 
                         if (movieJob != null)
                             Console.ResetColor();
                     }
-                    Console.WriteLine("[n] for new search");
 
-                    bool restartFlag = false;
-                    while (true)
+                    Console.WriteLine("\n");
+                    var bestTorrent = TorrentRating.GetBestTorrent(foundTorrents);
+                    if (bestTorrent == null)
                     {
-                        var key1 = Console.ReadKey();
-                        if (key1.KeyChar == 'n')
-                        {
-                            restartFlag = true;
-                            break;
-                        }
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"None of the torrents above passed the limits (Seeders > 0, Size Gb > {TorrentScoring.FileSizeGbMin} < {TorrentScoring.FileSizeGbMax}), or contained a banned word: {string.Join(", ", TorrentScoring.Tags.Where(x => x.Value == TorrentScoring.BannedTag).Select(x => x.Key))}");
+                        Console.ResetColor();
+                        Console.WriteLine("\n");
+                        Console.WriteLine($"Cancel? [n], [1-{(foundTorrents.Count() + 1)}] for manual selection, CTRL+C = quit)");
 
-                        if(int.TryParse(key1.KeyChar.ToString(), out int selectedMovieIndex))
-                        {
-                            selectedMovie = verifiedMovies.ElementAt(selectedMovieIndex);
-                            break;
-                        }
+                        //await AddToWatchlistPrompt(new Movie
+                        //{
+                        //    Title = selectedMovie.Title,
+                        //    ImdbId = selectedMovie.Id,
+                        //    ImdbScore = selectedMovie.Score,
+                        //    MetacriticScore = selectedMovie.ScoreMetacritic,
+                        //    TorrentName = query,
+                        //    ImageUrl = selectedMovie.ImageUrl,
+                        //    Status = MovieStatusEnum.WatchingFor
+                        //},  movieService);
+                        //continue;
+                    } else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"Best torrent: ({bestTorrent.Seeders} Seeders), {bestTorrent.SizeGb}Gb {bestTorrent.Name}");
+                        Console.ResetColor();
+                        Console.WriteLine("\n");
+                        Console.WriteLine($"Download the best torrent? [y/n], [1-{(foundTorrents.Count() + 1)}] for manual selection, CTRL+C = quit)");
                     }
 
-                    if(restartFlag)
+                    bool restartFlag2 = false;
+                    while (true)
+                    {
+                        var selectedTorrent = bestTorrent;
+                        var key2 = Console.ReadKey();
+                        if (key2.KeyChar == 'n')
+                        {
+                            restartFlag2 = true;
+                            break;
+                        }
+
+                        if (key2.KeyChar == 'y'  &&  bestTorrent == null)
+                        {
+                            continue;
+                        }
+
+                        if (key2.KeyChar != 'y' && int.TryParse(key2.KeyChar.ToString(), out int selectedTorrentIndex))
+                        {
+                            selectedTorrent = foundTorrents.ElementAt(selectedTorrentIndex - 1);
+                        }
+
+                        var transmission = serviceProvider.GetService<ITorrentClientService>();
+                        try
+                        {
+                            var result = await transmission.AddTorrentAsync(selectedTorrent.MagnetLink);
+                            if(result == null)
+                            {
+                                throw new Exception("Could not add torrent to the torrent client.");
+                            }
+                            try
+                            {
+                                var m = new Movie
+                                {
+                                    Title = selectedMovie.Title,
+                                    ImdbId = selectedMovie.Id,
+                                    ImdbScore = selectedMovie.Score,
+                                    MetacriticScore = selectedMovie.ScoreMetacritic,
+                                    TorrentName = selectedTorrent.Name,
+                                    TorrentClientTorrentId = result.TorrentId,
+                                    TorrentHash = result.Hash,
+                                    ImageUrl = selectedMovie.ImageUrl,
+                                    SizeGb = selectedTorrent.SizeGb
+                                };
+                                if (!await movieService.AddMovie(m))
+                                {
+                                    throw new Exception("db failed");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Could not add Movie to the catalog: {ex.Message}");
+                                Console.ReadKey();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Could not add torrent to download: {ex.Message}");
+                            Console.ReadKey();
+                        }
+
+                        break;
+                    }
+
+                    if (restartFlag2)
                     {
                         continue;
                     }
                 }
 
-                var torrentSearchService = _serviceProvider.GetService<TPBParserService>();
-                var results = await torrentSearchService.Search($"{selectedMovie.Title} {selectedMovie.ReleaseYear}");
-                if(results.Count == 0)
-                {
-                    Console.Write("\r\n");
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine("No torrents found.");
-                    Console.ResetColor();
 
-                    await AddToWatchlistPrompt(new Movie
-                    {
-                        Title = selectedMovie.Title,
-                        ImdbId = selectedMovie.Id,
-                        ImdbScore = selectedMovie.Score,
-                        MetacriticScore = selectedMovie.ScoreMetacritic,
-                        TorrentName = query,
-                        Status = MovieStatusEnum.WatchingFor
-                    });
-                    continue;
-                }
 
-                foreach (var t in results)
-                {
-                    Console.WriteLine($"{t.Seeders}\t{t.SizeGb}Gb\t{t.Name}");
-                }
 
-                var bestTorrent = TorrentRating.GetBestTorrent(results);
-                if (bestTorrent == null)
-                {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"None of the torrents above passed the limits (Seeders > 0, Size Gb > {TorrentScoring.FileSizeGbMin} < {TorrentScoring.FileSizeGbMax}), or contained a banned word: {string.Join(", ", TorrentScoring.Tags.Where(x => x.Value == TorrentScoring.BannedTag).Select(x => x.Key))}");
-                    Console.ResetColor();
 
-                    await AddToWatchlistPrompt(new Movie
-                    {
-                        Title = selectedMovie.Title,
-                        ImdbId = selectedMovie.Id,
-                        ImdbScore = selectedMovie.Score,
-                        MetacriticScore = selectedMovie.ScoreMetacritic,
-                        TorrentName = query,
-                        Status = MovieStatusEnum.WatchingFor
-                    });
-                    continue;
-                }
-                Console.WriteLine("\n");
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"Best torrent: ({bestTorrent.Seeders} Seeders), {bestTorrent.SizeGb}Gb {bestTorrent.Name}");
-                Console.ResetColor();
-                Console.WriteLine("\n");
-                Console.WriteLine("Download? [y/n], CTRL+C = quit)");
-                var key = Console.ReadKey();
-                if (key.KeyChar == 'y')
-                {
-                    var transmission = _serviceProvider.GetService<ITorrentClientService>();
-                    try
-                    {
-                        var result = await transmission.AddTorrentAsync(bestTorrent.MagnetLink);
-                        try
-                        {
-                            var m = new Movie
-                            {
-                                Title = selectedMovie.Title,
-                                ImdbId  = selectedMovie.Id,
-                                ImdbScore = selectedMovie.Score,
-                                MetacriticScore = selectedMovie.ScoreMetacritic,
-                                TorrentName = bestTorrent.Name,
-                                TorrentClientTorrentId = result.TorrentId,
-                                TorrentHash = result.Hash,
-                                SizeGb = bestTorrent.SizeGb
-                            };
-                            if (!await movieService.AddMovie(m))
-                            {
-                                throw new Exception("db failed");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"Could not add Movie to the catalog: {ex.Message}");
-                            Console.ReadKey();
-                        }
-                    } catch(Exception ex)
-                    {
-                        Console.WriteLine($"Could not add torrent to download: {ex.Message}");
-                        Console.ReadKey();
-                    }
-                }
+
+
+
             }
+
+
+                //_serviceProvider = new ServiceCollection()
+                //    .AddLogging()
+                //    .AddHttpClient()
+                //    .AddSingleton(transmissionConfiguration)
+                //    .AddSingleton(new SoFakingContextFactory())
+                //    .AddSingleton<MovieService>()
+                //    .AddSingleton<TPBParserService>()
+                //    .AddSingleton<ITorrentClientService, TransmissionService>()
+                //    .AddSingleton<IVerifiedMovieSearchService, ImdbService>()
+                //    .BuildServiceProvider();
+
         }
 
-        private static async Task AddToWatchlistPrompt(Movie movie)
+        private static async Task AddToWatchlistPrompt(Movie movie, MovieService ms)
         {
             Console.Write("\r\n");
             Console.WriteLine("[y/n] Add to watchlist?");
             var key = Console.ReadKey();
             if (key.KeyChar == 'y')
             {
-                var movieService = _serviceProvider.GetService<MovieService>();
                 try
                 {
-                    await movieService.AddMovie(movie);
+                    await ms.AddMovie(movie);
                 }
                 catch (Exception ex)
                 {

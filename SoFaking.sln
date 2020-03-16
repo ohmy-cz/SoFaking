@@ -11,7 +11,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "net.jancerveny.sofaking.Com
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "net.jancerveny.sofaking.client.Web", "net.jancerveny.sofaking.client.Web\net.jancerveny.sofaking.client.Web.csproj", "{A0B2E918-A466-4FE5-8946-802C2A63F665}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "net.jancerveny.sofaking.DataLayer", "net.jancerveny.sofaking.DataLayer\net.jancerveny.sofaking.DataLayer.csproj", "{85263861-65E9-4BD5-B398-79DE1C7D17D7}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "net.jancerveny.sofaking.DataLayer", "net.jancerveny.sofaking.DataLayer\net.jancerveny.sofaking.DataLayer.csproj", "{85263861-65E9-4BD5-B398-79DE1C7D17D7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "net.jancerveny.sofaking.WorkerService", "net.jancerveny.sofaking.WorkerService\net.jancerveny.sofaking.WorkerService.csproj", "{66F107B7-B9DB-4ADA-B53C-AFB8E53AB77C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -39,6 +41,10 @@ Global
 		{85263861-65E9-4BD5-B398-79DE1C7D17D7}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{85263861-65E9-4BD5-B398-79DE1C7D17D7}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{85263861-65E9-4BD5-B398-79DE1C7D17D7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{66F107B7-B9DB-4ADA-B53C-AFB8E53AB77C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{66F107B7-B9DB-4ADA-B53C-AFB8E53AB77C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{66F107B7-B9DB-4ADA-B53C-AFB8E53AB77C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{66F107B7-B9DB-4ADA-B53C-AFB8E53AB77C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

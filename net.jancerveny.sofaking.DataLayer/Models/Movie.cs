@@ -22,10 +22,11 @@ namespace net.jancerveny.sofaking.DataLayer.Models
         public int MetacriticScore { get; set; }
         public double ImdbScore { get; set; }
         public GenreFlags Genres { get; set; }
+        public string ImageUrl { get; set; }
         public Movie()
         {
             Added = DateTime.Now;
-            Status = MovieStatusEnum.Queued;
+            Status = MovieStatusEnum.DownloadQueued;
         }
     }
 }

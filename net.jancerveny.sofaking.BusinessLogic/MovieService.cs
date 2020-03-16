@@ -55,5 +55,19 @@ namespace net.jancerveny.sofaking.BusinessLogic
                 return db.Movies.ToList();
             }
         }
+
+        public async Task SetMovieStatus(int id, MovieStatusEnum status)
+        {
+            using (var db = _dbContextFactory.CreateDbContext())
+            {
+                var m = db.Movies.Where(x => x.Id == id).FirstOrDefault();
+                m.Status = status;
+                if(status == MovieStatusEnum.Finished)
+                {
+                    m.Deleted = DateTime.Now;
+                }
+                await db.SaveChangesAsync();
+            }
+        }
     }
 }
