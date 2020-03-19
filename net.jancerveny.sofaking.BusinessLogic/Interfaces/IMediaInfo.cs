@@ -4,6 +4,7 @@
 	{
 		string VideoCodec { get; set; }
 		string VideoResolution { get; set; }
+		int? VideoBitrateKbs { get; set; }
 		string AudioCodec { get; set; }
 	}
 }

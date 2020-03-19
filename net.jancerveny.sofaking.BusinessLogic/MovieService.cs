@@ -1,4 +1,5 @@
-﻿using net.jancerveny.sofaking.DataLayer;
+﻿using Microsoft.EntityFrameworkCore;
+using net.jancerveny.sofaking.DataLayer;
 using net.jancerveny.sofaking.DataLayer.Models;
 using System;
 using System.Collections.Generic;
@@ -21,7 +22,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
         {
             using (var db = _dbContextFactory.CreateDbContext())
             {
-                if(!string.IsNullOrWhiteSpace(movie.ImdbId) && db.Movies.Where(x => x.ImdbId == movie.ImdbId).Any())
+                if(!string.IsNullOrWhiteSpace(movie.ImdbId) && await db.Movies.Where(x => x.ImdbId == movie.ImdbId).AnyAsync())
                 {
                     return false;
                 }
@@ -38,7 +39,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
         {
             using (var db = _dbContextFactory.CreateDbContext())
             {
-                var movie = db.Movies.Where(x => x.Id == id).FirstOrDefault();
+                var movie = await db.Movies.Where(x => x.Id == id).FirstOrDefaultAsync();
                 if (movie == null)
                 {
                     throw new Exception("Movie does not exist");
@@ -48,11 +49,11 @@ namespace net.jancerveny.sofaking.BusinessLogic
             }
         }
 
-        public List<Movie> GetMovies()
+        public async Task<List<Movie>> GetMoviesAsync()
         {
             using (var db = _dbContextFactory.CreateDbContext())
             {
-                return db.Movies.ToList();
+                return await db.Movies.ToListAsync();
             }
         }
 
@@ -60,13 +61,21 @@ namespace net.jancerveny.sofaking.BusinessLogic
         {
             using (var db = _dbContextFactory.CreateDbContext())
             {
-                var m = db.Movies.Where(x => x.Id == id).FirstOrDefault();
+                var m = await db.Movies.Where(x => x.Id == id).FirstOrDefaultAsync();
                 m.Status = status;
                 if(status == MovieStatusEnum.Finished)
                 {
                     m.Deleted = DateTime.Now;
                 }
                 await db.SaveChangesAsync();
+            }
+        }
+
+        public async Task<bool> IsAnimated(int id)
+        {
+            using (var db = _dbContextFactory.CreateDbContext())
+            {
+                return (await db.Movies.Where(x => x.Id == id).FirstOrDefaultAsync())?.Genres.HasFlag(GenreFlags.Animated) ?? false;
             }
         }
     }

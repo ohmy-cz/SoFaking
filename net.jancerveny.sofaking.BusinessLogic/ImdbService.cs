@@ -21,6 +21,8 @@ namespace net.jancerveny.sofaking.BusinessLogic
             public static Regex ImdbScore => new Regex(@"class=""imdbRating""(?:.+?)<span itemprop=""ratingValue"">([\d.,]+?)<\/span>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
             public static Regex MetacriticScore => new Regex(@"<(?:[a-z]+?)\sclass=""metacriticScore(?:.*?)?"">\s*<span>(.+?)<\/span>\s*<\/div>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
             public static Regex ValidImdbObjectId = new Regex(@"tt\d+", RegexOptions.Compiled);
+            public static Regex TitleWrapper = new Regex(@"class=""title_wrapper"">(?:.+?)<\/div>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            public static Regex Genres = new Regex(@"\?genres=(.+?)&explore(?:.+?)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         }
 
         private readonly IHttpClientFactory _clientFactory;
@@ -83,6 +85,21 @@ namespace net.jancerveny.sofaking.BusinessLogic
                         var imdbMovieDetailResponse = await movieDetailResponse.Content.ReadAsStringAsync();
                         double.TryParse(Regexes.ImdbScore.Match(imdbMovieDetailResponse).Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double imdbScore);
                         int.TryParse(Regexes.MetacriticScore.Match(imdbMovieDetailResponse).Groups[1].Value, out int metacriticScore);
+                        GenreFlags genres = GenreFlags.Other;
+                        var titleWrapper = Regexes.TitleWrapper.Match(imdbMovieDetailResponse)?.Groups[1]?.Value;
+                        if(!string.IsNullOrWhiteSpace(titleWrapper))
+                        {
+                            foreach (Match genre in Regexes.Genres.Matches(titleWrapper))
+                            {
+                                foreach (GenreFlags enumVal in Enum.GetValues(typeof(GenreFlags)))
+                                {
+                                    if(enumVal.ToString().ToLower() == genre.Groups[1].Value.ToLower())
+                                    {
+                                        genres |= enumVal;
+                                    }
+                                }
+                            }
+                        }
 
                         return new MovieSearchResult
                         {
@@ -91,7 +108,8 @@ namespace net.jancerveny.sofaking.BusinessLogic
                             ReleaseYear = imdbMatch.Year,
                             Score = imdbScore,
                             ScoreMetacritic = metacriticScore,
-                            ImageUrl = imdbMatch.Image?.ImageUrl
+                            ImageUrl = imdbMatch.Image?.ImageUrl,
+                            Genres = genres
                         };
                     }
                 });

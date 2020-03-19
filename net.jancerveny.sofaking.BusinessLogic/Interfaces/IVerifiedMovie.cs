@@ -17,5 +17,6 @@ namespace net.jancerveny.sofaking.BusinessLogic.Interfaces
         /// </summary>
         int ScoreMetacritic { get; set; }
         string ImageUrl { get; set; }
+        GenreFlags Genres { get; set; }
     }
 }

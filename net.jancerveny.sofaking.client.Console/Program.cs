@@ -79,7 +79,7 @@ namespace net.jancerveny.sofaking.client.console
                     var query = Console.ReadLine();
                     var verifiedMovieSearch = serviceProvider.GetService<IVerifiedMovieSearchService>();
                     var verifiedMovies = await verifiedMovieSearch.Search(query);
-                    var movieJobs = movieService.GetMovies();
+                    var movieJobs = movieService.GetMoviesAsync();
                     if (verifiedMovies == null || verifiedMovies.Count == 0)
                     {
                         Console.ForegroundColor = ConsoleColor.Red;
@@ -187,7 +187,8 @@ namespace net.jancerveny.sofaking.client.console
                             MetacriticScore = selectedMovie.ScoreMetacritic,
                             TorrentName = query,
                             ImageUrl = selectedMovie.ImageUrl,
-                            Status = MovieStatusEnum.WatchingFor
+                            Status = MovieStatusEnum.WatchingFor,
+                            Genres = selectedMovie.Genres
                         }, movieService);
                         continue;
                     }
@@ -331,8 +332,10 @@ namespace net.jancerveny.sofaking.client.console
                                     TorrentClientTorrentId = result.TorrentId,
                                     TorrentHash = result.Hash,
                                     ImageUrl = selectedMovie.ImageUrl,
-                                    SizeGb = selectedTorrent.SizeGb
+                                    SizeGb = selectedTorrent.SizeGb,
+                                    Genres = selectedMovie.Genres
                                 };
+
                                 if (!await movieService.AddMovie(m))
                                 {
                                     throw new Exception("db failed");

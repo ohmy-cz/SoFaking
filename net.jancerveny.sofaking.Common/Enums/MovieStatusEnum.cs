@@ -5,10 +5,13 @@
     Downloading,
     DownloadingPaused,
     Downloaded,
+    NoVideoFilesError,
     TranscodingQueued,
-    TranscodingStarted,
+    AnalysisStarted,
     Transcoding,
     TranscodingFinished,
     TranscodingError,
-    Finished
+    Finished,
+    FileInUse,
+    FileNotFound
 }
