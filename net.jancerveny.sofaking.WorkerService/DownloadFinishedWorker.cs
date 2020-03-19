@@ -434,7 +434,7 @@ namespace net.jancerveny.sofaking.WorkerService
 		private bool HasAcceptableVideo(IMediaInfo mediaInfo, FileInfo videoFile) {
 			var acceptableCodec = _configuration.AcceptedVideoCodecs.Contains(mediaInfo.VideoCodec);
 			var acceptableResolution = int.Parse(mediaInfo.VideoResolution.Split("x")[0]) <= int.Parse(_configuration.Resolution.Split("x")[0]);
-			var acceptableSize = videoFile.Length > (_configuration.MaxPS4FileSizeGb * 1024 * 1024 * 1024);
+			var acceptableSize = videoFile.Length > (_configuration.MaxPS4FileSizeGb * 1024 * 1024);
 			var acceptableBitrate = (mediaInfo.VideoBitrateKbs == null || mediaInfo.VideoBitrateKbs <= _encoderService.TargetVideoBitrateKbs);
 
 			return acceptableCodec && acceptableResolution && acceptableSize && acceptableBitrate;
