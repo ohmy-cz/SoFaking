@@ -21,7 +21,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
             public static Regex ImdbScore => new Regex(@"class=""imdbRating""(?:.+?)<span itemprop=""ratingValue"">([\d.,]+?)<\/span>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
             public static Regex MetacriticScore => new Regex(@"<(?:[a-z]+?)\sclass=""metacriticScore(?:.*?)?"">\s*<span>(.+?)<\/span>\s*<\/div>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
             public static Regex ValidImdbObjectId = new Regex(@"tt\d+", RegexOptions.Compiled);
-            public static Regex TitleWrapper = new Regex(@"class=""title_wrapper"">(?:.+?)<\/div>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            public static Regex TitleWrapper = new Regex(@"class=""title_wrapper"">(.+?)<\/div>\s*?<\/div>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
             public static Regex Genres = new Regex(@"\?genres=(.+?)&explore(?:.+?)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         }
 
@@ -93,7 +93,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
                             {
                                 foreach (GenreFlags enumVal in Enum.GetValues(typeof(GenreFlags)))
                                 {
-                                    if(enumVal.ToString().ToLower() == genre.Groups[1].Value.ToLower())
+                                    if(enumVal.ToString().ToLower() == genre.Groups[1].Value.ToLower().Replace("-", string.Empty))
                                     {
                                         genres |= enumVal;
                                     }

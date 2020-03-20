@@ -13,5 +13,7 @@
     TranscodingError,
     Finished,
     FileInUse,
-    FileNotFound
+    FileNotFound,
+    CouldNotCleanup,
+    TranscodingIncomplete
 }

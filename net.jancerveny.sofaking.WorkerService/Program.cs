@@ -53,10 +53,13 @@ namespace net.jancerveny.sofaking.WorkerService
 					hostContext.Configuration.GetSection("Transmission").Bind(transmissionConfiguration);
 					var encoderConfiguration = new EncoderConfiguration();
 					hostContext.Configuration.GetSection("Encoder").Bind(encoderConfiguration);
+					var sofakingConfiguration = new SoFakingConfiguration();
+					hostContext.Configuration.GetSection("Sofaking").Bind(sofakingConfiguration);
 
 					services
 						.AddHttpClient()
 						.AddSingleton(transmissionConfiguration)
+						.AddSingleton(sofakingConfiguration)
 						.AddSingleton<TransmissionHttpClientFactory>()
 						.AddSingleton(downloadFinishedWorkerConfiguration)
 						.AddSingleton(encoderConfiguration)

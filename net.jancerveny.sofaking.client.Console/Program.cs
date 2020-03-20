@@ -30,7 +30,9 @@ namespace net.jancerveny.sofaking.client.console
             IConfigurationRoot configuration = builder.Build();
             var proxies = new List<string>();
             configuration.GetSection("TPBProxies").Bind(proxies);
-            if(proxies.Count == 0)
+            var sofakingConfiguration = new SoFakingConfiguration();
+            configuration.GetSection("Sofaking").Bind(sofakingConfiguration);
+            if (proxies.Count == 0)
             {
                 throw new Exception("TPB Proxies configuration missing");
             }
@@ -79,7 +81,7 @@ namespace net.jancerveny.sofaking.client.console
                     var query = Console.ReadLine();
                     var verifiedMovieSearch = serviceProvider.GetService<IVerifiedMovieSearchService>();
                     var verifiedMovies = await verifiedMovieSearch.Search(query);
-                    var movieJobs = movieService.GetMoviesAsync();
+                    var movieJobs = await movieService.GetMoviesAsync();
                     if (verifiedMovies == null || verifiedMovies.Count == 0)
                     {
                         Console.ForegroundColor = ConsoleColor.Red;
@@ -255,7 +257,7 @@ namespace net.jancerveny.sofaking.client.console
                     }
 
                     Console.WriteLine("\n");
-                    var bestTorrent = TorrentRating.GetBestTorrent(foundTorrents);
+                    var bestTorrent = TorrentRating.GetBestTorrent(foundTorrents, sofakingConfiguration.AudioLanguages);
                     if (bestTorrent == null)
                     {
                         Console.ForegroundColor = ConsoleColor.Red;

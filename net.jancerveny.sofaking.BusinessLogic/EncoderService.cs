@@ -5,8 +5,10 @@ using Microsoft.Extensions.Logging;
 using net.jancerveny.sofaking.BusinessLogic.Exceptions;
 using net.jancerveny.sofaking.BusinessLogic.Interfaces;
 using net.jancerveny.sofaking.BusinessLogic.Models;
+using net.jancerveny.sofaking.Common.Models;
 using System;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -16,14 +18,18 @@ namespace net.jancerveny.sofaking.BusinessLogic
 	{
 		private readonly ILogger<EncoderService> _logger;
 		private readonly EncoderConfiguration _configuration;
+		private readonly SoFakingConfiguration _sofakingConfiguration;
 		private static string _file;
 		private static bool _busy;
 		public int TargetVideoBitrateKbs { get { return _configuration.OutputVideoBitrateMbits * 1024; } }
 		public string CurrentFile { get { return _file; } }
-		public EncoderService(ILogger<EncoderService> logger, EncoderConfiguration configuration)
+
+		private const char optionalFlag = '?';
+		public EncoderService(ILogger<EncoderService> logger, EncoderConfiguration configuration, SoFakingConfiguration sofakingConfiguration)
 		{
 			_logger = logger;
 			_configuration = configuration;
+			_sofakingConfiguration = sofakingConfiguration;
 		}
 
 		public async Task<IMediaInfo> GetMediaInfo(string filePath)
@@ -38,11 +44,11 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				VideoCodec = metaData?.VideoData?.Format,
 				VideoResolution = metaData?.VideoData?.FrameSize,
 				VideoBitrateKbs = bitrate,
-				AudioCodec = metaData?.AudioData?.Format
+				AudioCodec = metaData?.AudioData?.Format // I assume this takes the default audio stream...
 			};
 		}
 
-		public void StartTranscoding(ITranscodingJob transcodingJob, Action onCompleteInternal)
+		public void StartTranscoding(ITranscodingJob transcodingJob, Action onDoneInternal, Action onSuccessInternal)
 		{
 			if(!File.Exists(transcodingJob.SourceFile))
 			{
@@ -72,15 +78,47 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				// Discard all streams except those in 
 				//_configuration.AudioLanguages
 				// Reencode the english stream only, and add it as primary stream. Copy all other desirable audio languages from the list.
-				var arguments = $"-i \"{_file}\" " +
-					"-c copy " +
-					$"-map 0:v -c:v {(transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? _configuration.OutputVideoCodec + $" -b:v {_configuration.OutputVideoBitrateMbits}M -vf scale=1080:-2" : "copy")} " +
-						"-preset veryslow -crf 18 " +
-						$"-tune {(transcodingJob.Action.HasFlag(EncodingTargetFlags.VideoIsAnimation) ? "animation" : "film")} " +
-					"-map -0:a " + // Drop all audio tracks, and then add EN back below.
-					$"-map 0:a:m:language:eng -c:a:0 {(transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewAudio) ? $"{_configuration.OutputAudioCodec} -b:a:0 {_configuration.OutputVideoBitrateMbits}M -disposition:a:0 default -map 0:a:m:language:eng -c:a:1 copy" : "copy")} " +
-					"-map 0:s? " + // Subtitles
-					$"\"{temporaryFile}\"";
+				var a = new StringBuilder();
+				a.Append($"-i \"{_file}\" ");
+				a.Append("-c copy ");
+
+				// Video
+				a.Append($"-map 0:v -c:v {(transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? _configuration.OutputVideoCodec + $" -b:v {_configuration.OutputVideoBitrateMbits}M -vf scale=1080:-2" : "copy")} ");
+				a.Append("-preset veryslow -crf 18 ");
+				a.Append($"-tune {(transcodingJob.Action.HasFlag(EncodingTargetFlags.VideoIsAnimation) ? "animation" : "film")} ");
+
+				// Audio
+				a.Append("-map -0:a "); // Drop all audio tracks, and then add only those we want below.
+				var audioTrackCounter = 0;
+				foreach(var lang in _sofakingConfiguration.AudioLanguages)
+				{
+					a.Append($"-map 0:a:m:language:{lang}{optionalFlag} -c:a:{audioTrackCounter} {(transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewAudio) ? $"{_configuration.OutputAudioCodec} -b:a:{audioTrackCounter} {_configuration.OutputAudioBitrateMbits}M" : "copy")} ");
+					if(audioTrackCounter == 0)
+					{
+						if(transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewAudio))
+						{
+							a.Append($"-metadata:s:a:{audioTrackCounter} title=\"PS4 Compatible\" ");
+						}
+
+						a.Append($"-disposition:a:{audioTrackCounter} default ");
+					}
+					audioTrackCounter++;
+
+					// The English default track  is usually in a very high quality that we can't play on a PS4, but we don't want to lose
+					// So we copy it as the second track.
+					if (lang == "eng" && transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewAudio))
+					{
+						a.Append($"-map 0:a:m:language:{lang}{optionalFlag} -c:a:{audioTrackCounter} copy ");
+						audioTrackCounter++;
+					}
+				}
+				
+				// Subtitles
+				a.Append($"-map 0:s{optionalFlag} ");
+#if DEBUG
+				a.Append("-t 00:01:00.0 "); // only for debug. This makes ffmpeg never return though
+#endif
+				a.Append($"\"{temporaryFile}\"");
 
 				ffmpeg.Progress += (object sender, ConversionProgressEventArgs e) =>
 				{
@@ -89,6 +127,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				
 				ffmpeg.Error += (object sender, ConversionErrorEventArgs e) => {
 					_logger.LogError($"Encoding error {e.Exception.Message}", e.Exception);
+					onDoneInternal();
 					_busy = false;
 					_file = null;
 					transcodingJob.OnError();
@@ -96,15 +135,21 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				
 				ffmpeg.Complete += (object sender, ConversionCompleteEventArgs e) =>
 				{
+					if(!Directory.Exists(transcodingJob.DestinationFolder))
+					{
+						Directory.CreateDirectory(transcodingJob.DestinationFolder);
+					}
+
 					File.Move(temporaryFile, destinationFile);
 					_logger.LogWarning($"Encoding complete! {_file}");
+					onDoneInternal();
 					_busy = false;
 					_file = null;
-					onCompleteInternal();
 					transcodingJob.OnComplete();
+					onSuccessInternal();
 				};
 
-				await ffmpeg.ExecuteAsync(arguments, transcodingJob.CancellationToken);
+				await ffmpeg.ExecuteAsync(a.ToString(), transcodingJob.CancellationToken);
 			});
 		}
 	}

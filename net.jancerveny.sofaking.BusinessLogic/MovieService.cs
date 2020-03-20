@@ -75,7 +75,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
         {
             using (var db = _dbContextFactory.CreateDbContext())
             {
-                return (await db.Movies.Where(x => x.Id == id).FirstOrDefaultAsync())?.Genres.HasFlag(GenreFlags.Animated) ?? false;
+                return (await db.Movies.Where(x => x.Id == id).FirstOrDefaultAsync())?.Genres.HasFlag(GenreFlags.Animation) ?? false;
             }
         }
     }
