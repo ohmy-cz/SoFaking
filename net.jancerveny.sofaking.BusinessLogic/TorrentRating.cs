@@ -3,6 +3,7 @@ using net.jancerveny.sofaking.Common.Models;
 using System.Collections.Generic;
 using System.Linq;
 using net.jancerveny.sofaking.Common.Utils;
+using System;
 
 namespace net.jancerveny.sofaking.BusinessLogic
 {
@@ -57,9 +58,15 @@ namespace net.jancerveny.sofaking.BusinessLogic
                 }
 
                 // Probably less precise, hence the lower score
-                if (name.IndexOf(CountryCodes.ConvertThreeLetterNameToTwoLetterName(lang)) >= 0)
+                try
                 {
-                    score += 500;
+                    if (name.IndexOf(CountryCodes.ConvertThreeLetterNameToTwoLetterName(lang)) >= 0)
+                    {
+                        score += 500;
+                    }
+                } catch (Exception _)
+                {
+                    // we found no match.
                 }
             }
 

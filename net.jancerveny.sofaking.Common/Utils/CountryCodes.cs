@@ -7,21 +7,22 @@ namespace net.jancerveny.sofaking.Common.Utils
 {
 	public static class CountryCodes
 	{
-        public static string ConvertThreeLetterNameToTwoLetterName(string threeLetterCountryCode)
+        public static string ConvertThreeLetterNameToTwoLetterName(string threeLetterISOLanguageName)
         {
-            if (threeLetterCountryCode == null || threeLetterCountryCode.Length != 3)
+            if (threeLetterISOLanguageName == null || threeLetterISOLanguageName.Length != 3)
             {
-                throw new ArgumentException($"{nameof(threeLetterCountryCode)} must be three letters.");
+                throw new ArgumentException($"{nameof(threeLetterISOLanguageName)} must be three letters.");
             }
 
             CultureInfo[] cultures = CultureInfo.GetCultures(CultureTypes.SpecificCultures);
 
             foreach (CultureInfo culture in cultures)
             {
-                RegionInfo region = new RegionInfo(culture.LCID);
-                if (region.ThreeLetterISORegionName.ToLower() == threeLetterCountryCode.ToLower())
+                
+                //RegionInfo region = new System.Globalization.lan(culture.LCID);
+                if (culture.ThreeLetterISOLanguageName.ToLower() == threeLetterISOLanguageName.ToLower())
                 {
-                    return region.TwoLetterISORegionName;
+                    return culture.TwoLetterISOLanguageName;
                 }
             }
 
