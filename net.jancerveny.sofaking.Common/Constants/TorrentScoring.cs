@@ -11,6 +11,8 @@ namespace net.jancerveny.sofaking.Common.Constants
         {
             // Positive tags will result in higher score
             { "1080p", 110 },
+            { "MULTI", 105 }, // Possibly multiple audio languages
+            { "MultiLang", 105 }, // Possibly multiple audio languages
             { "Atmos", 100 },
             { "TrueHD", 90 },
             { "HD7.1", 90 }, //TODO: Search for Sixth sense, some tags should be searched before splitting by dot. Maybe split by regex that only splits words by dots between letters, ie not numbers?
@@ -18,6 +20,7 @@ namespace net.jancerveny.sofaking.Common.Constants
             { "8CH", 90 },
             { "DTS-HD.MA 7.1", 85 },
             { "DTS-MA", 85 },
+            { "DTS-HD-7.1", 85 },
             { "DTS-HD", 85 },
             { "DTS-ES", 85 },
             { "DTS5.1", 80 },

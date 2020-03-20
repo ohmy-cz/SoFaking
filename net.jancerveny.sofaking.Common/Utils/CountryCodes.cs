@@ -18,8 +18,6 @@ namespace net.jancerveny.sofaking.Common.Utils
 
             foreach (CultureInfo culture in cultures)
             {
-                
-                //RegionInfo region = new System.Globalization.lan(culture.LCID);
                 if (culture.ThreeLetterISOLanguageName.ToLower() == threeLetterISOLanguageName.ToLower())
                 {
                     return culture.TwoLetterISOLanguageName;
