@@ -8,12 +8,15 @@
     NoVideoFilesError,
     TranscodingQueued,
     AnalysisStarted,
-    Transcoding,
+    TranscodingStarted,
     TranscodingFinished,
     TranscodingError,
     Finished,
     FileInUse,
     FileNotFound,
     CouldNotCleanup,
-    TranscodingIncomplete
+    TranscodingIncomplete,
+    TranscodingRunningTooLong, // Transcoding took more than 24 hours
+    AnalysisAudioFailed,
+    AnalysisVideoFailed
 }

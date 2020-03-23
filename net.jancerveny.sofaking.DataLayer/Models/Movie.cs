@@ -23,6 +23,7 @@ namespace net.jancerveny.sofaking.DataLayer.Models
         public double ImdbScore { get; set; }
         public GenreFlags Genres { get; set; }
         public string ImageUrl { get; set; }
+        public DateTime? TranscodingStarted { get; set; }
         public Movie()
         {
             Added = DateTime.Now;

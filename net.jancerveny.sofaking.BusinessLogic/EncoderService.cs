@@ -44,6 +44,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				VideoCodec = metaData?.VideoData?.Format,
 				VideoResolution = metaData?.VideoData?.FrameSize,
 				VideoBitrateKbs = bitrate,
+				FileInfo = metaData?.FileInfo,
 				AudioCodec = metaData?.AudioData?.Format // I assume this takes the default audio stream...
 			};
 		}

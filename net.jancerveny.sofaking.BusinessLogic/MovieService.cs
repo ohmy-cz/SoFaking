@@ -67,6 +67,12 @@ namespace net.jancerveny.sofaking.BusinessLogic
                 {
                     m.Deleted = DateTime.Now;
                 }
+
+                if(status == MovieStatusEnum.TranscodingStarted)
+                {
+                    m.TranscodingStarted = DateTime.Now;
+                }
+
                 await db.SaveChangesAsync();
             }
         }

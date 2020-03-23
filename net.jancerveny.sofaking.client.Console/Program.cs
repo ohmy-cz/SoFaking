@@ -24,7 +24,7 @@ namespace net.jancerveny.sofaking.client.console
             var builder = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
                 .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
-                .AddJsonFile("appsettings.Production.json", optional: true, reloadOnChange: true) // TODO: Change the Production with Enviroment
+                .AddJsonFile("appsettings.Development.json", optional: true, reloadOnChange: true) // TODO: Change the Production with Enviroment
                 .AddEnvironmentVariables();
 
             IConfigurationRoot configuration = builder.Build();
@@ -125,7 +125,7 @@ namespace net.jancerveny.sofaking.client.console
                                         Console.ForegroundColor = ConsoleColor.DarkYellow;
                                         status = "Queued";
                                         break;
-                                    case MovieStatusEnum.Transcoding:
+                                    case MovieStatusEnum.TranscodingStarted:
                                         Console.ForegroundColor = ConsoleColor.Magenta;
                                         status = "Transc";
                                         break;
@@ -233,7 +233,7 @@ namespace net.jancerveny.sofaking.client.console
                                     Console.ForegroundColor = ConsoleColor.DarkYellow;
                                     status = "Queued";
                                     break;
-                                case MovieStatusEnum.Transcoding:
+                                case MovieStatusEnum.TranscodingStarted:
                                     Console.ForegroundColor = ConsoleColor.Magenta;
                                     status = "Transc";
                                     break;

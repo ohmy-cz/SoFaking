@@ -8,6 +8,7 @@ using net.jancerveny.sofaking.WorkerService.Models;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -57,14 +58,41 @@ namespace net.jancerveny.sofaking.WorkerService
 			}
 			catch (Exception ex)
 			{
+				// Get stack trace for the exception with source file information
+				var st = new StackTrace(ex, true);
+				// Get the top stack frame
+				var frame0 = st.GetFrame(0);
+				var frame1 = st.GetFrame(1);
+				var frame2 = st.GetFrame(2);
+				var frame3 = st.GetFrame(3);
 				_logger.LogError($"Handling crashed transcoding failed {ex.Message}", ex);
+				_logger.LogError($"{frame0.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame0.GetFileLineNumber()}");
+				_logger.LogError($"{frame1.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame1.GetFileLineNumber()}");
+				_logger.LogError($"{frame2.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame2.GetFileLineNumber()}");
+				_logger.LogError($"{frame3.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame3.GetFileLineNumber()}");
 			}
 
 			while (!stoppingToken.IsCancellationRequested)
 			{
-
 				_logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
 				IReadOnlyList<ITorrentClientTorrent> torrents;
+
+				try
+				{
+					await HandleLongRunningTranscoding();
+				} catch(Exception ex)
+				{
+					var st = new StackTrace(ex, true);
+					var frame0 = st.GetFrame(0);
+					var frame1 = st.GetFrame(1);
+					var frame2 = st.GetFrame(2);
+					var frame3 = st.GetFrame(3);
+					_logger.LogError($"Could not handle long running transcoding check. {ex.Message}", ex);
+					_logger.LogError($"{frame0.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame0.GetFileLineNumber()}");
+					_logger.LogError($"{frame1.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame1.GetFileLineNumber()}");
+					_logger.LogError($"{frame2.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame2.GetFileLineNumber()}");
+					_logger.LogError($"{frame3.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame3.GetFileLineNumber()}");
+				}
 
 				try
 				{
@@ -79,48 +107,34 @@ namespace net.jancerveny.sofaking.WorkerService
 				}
 				catch (Exception ex)
 				{
-					_logger.LogError("Handling movies failed", ex);
+					var st = new StackTrace(ex, true);
+					var frame0 = st.GetFrame(0);
+					var frame1 = st.GetFrame(1);
+					var frame2 = st.GetFrame(2);
+					var frame3 = st.GetFrame(3);
+					_logger.LogError($"Getting all torrents from the Torrent client {_torrentClient.GetType().Name} failed: {ex.Message}", ex);
+					_logger.LogError($"{frame0.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame0.GetFileLineNumber()}");
+					_logger.LogError($"{frame1.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame1.GetFileLineNumber()}");
+					_logger.LogError($"{frame2.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame2.GetFileLineNumber()}");
+					_logger.LogError($"{frame3.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame3.GetFileLineNumber()}");
 					continue;
 				}
-				//#if DEBUG
-				//				// Test 1
-				//				IReadOnlyList<ITorrentClientTorrent> torrents = new List<TransmissionTorrent>
-				//				{
-				//					new TransmissionTorrent
-				//					{
-				//						Name = "Zombieland.Double.Tap.2019.MULTi.1080p.Bluray.DTS-HDMA.7.1.(En.Cze.Ita.Pol).HEVC-DDR[EtHD]",
-				//						Hash = "918670db1d671799ef609789f5ec1b6c8f49e1c0", //  Zombieland
-				//						Id = 129,
-				//						IsFinished = true,
-				//						Status = TorrentStatusEnum.Download
-				//					},
-				//					new TransmissionTorrent
-				//					{
-				//						Name = "Singles.1992.1080p.BluRay.X264-AMIABLE",
-				//						Hash = "b310634cc17d8ad47ee1e20712094a7f4cc17cef",  // Singles
-				//						Id = 126,
-				//						IsFinished = true,
-				//						Status = TorrentStatusEnum.Download
-				//					}
-				//				};
-				//#endif
-
 
 				try
 				{
 					await HandleTorrentStatusUpdates(torrents);
 				} catch(Exception ex)
 				{
-					_logger.LogError($"Handling movies failed {ex.Message}", ex);
-				}
-
-				try
-				{
-					await HandleDownloadedMovies(torrents, stoppingToken);
-				}
-				catch (Exception ex)
-				{
-					_logger.LogError($"Handling downloaded and transcoded movies failed {ex.Message}", ex);
+					var st = new StackTrace(ex, true);
+					var frame0 = st.GetFrame(0);
+					var frame1 = st.GetFrame(1);
+					var frame2 = st.GetFrame(2);
+					var frame3 = st.GetFrame(3);
+					_logger.LogError($"Handling torrent status updates failed: {ex.Message}", ex);
+					_logger.LogError($"{frame0.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame0.GetFileLineNumber()}");
+					_logger.LogError($"{frame1.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame1.GetFileLineNumber()}");
+					_logger.LogError($"{frame2.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame2.GetFileLineNumber()}");
+					_logger.LogError($"{frame3.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame3.GetFileLineNumber()}");
 				}
 
 				try
@@ -129,16 +143,52 @@ namespace net.jancerveny.sofaking.WorkerService
 				}
 				catch (Exception ex)
 				{
-					_logger.LogError($"Handling queued transcoding failed {ex.Message}", ex);
+					var st = new StackTrace(ex, true);
+					var frame0 = st.GetFrame(0);
+					var frame1 = st.GetFrame(1);
+					var frame2 = st.GetFrame(2);
+					var frame3 = st.GetFrame(3);
+					_logger.LogError($"Handling of queued transcoding failed: {ex.Message}", ex);
+					_logger.LogError($"{frame0.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame0.GetFileLineNumber()}");
+					_logger.LogError($"{frame1.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame1.GetFileLineNumber()}");
+					_logger.LogError($"{frame2.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame2.GetFileLineNumber()}");
+					_logger.LogError($"{frame3.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame3.GetFileLineNumber()}");
+				}
+
+				try
+				{
+					await HandleDownloadedMovies(torrents, stoppingToken);
+				}
+				catch (Exception ex)
+				{
+					var st = new StackTrace(ex, true);
+					var frame0 = st.GetFrame(0);
+					var frame1 = st.GetFrame(1);
+					var frame2 = st.GetFrame(2);
+					var frame3 = st.GetFrame(3);
+					_logger.LogError($"Handling downloaded and transcoded movies failed {ex.Message}", ex);
+					_logger.LogError($"{frame0.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame0.GetFileLineNumber()}");
+					_logger.LogError($"{frame1.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame1.GetFileLineNumber()}");
+					_logger.LogError($"{frame2.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame2.GetFileLineNumber()}");
+					_logger.LogError($"{frame3.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame3.GetFileLineNumber()}");
 				}
 
 				await Task.Delay(10 * 1000, stoppingToken);
 			}
 		}
 
+		private async Task HandleLongRunningTranscoding()
+		{
+			var longRunningTranscoding = (await _movieService.GetMoviesAsync()).Where(x => x.Status == MovieStatusEnum.TranscodingStarted && x.TranscodingStarted != null && x.TranscodingStarted < DateTime.Now.AddDays(-1)).FirstOrDefault();
+			if (longRunningTranscoding != null)
+			{
+				await _movieService.SetMovieStatus(longRunningTranscoding.Id, MovieStatusEnum.TranscodingRunningTooLong);
+			}
+		}
+
 		private async Task HandleQueuedTranscoding(IReadOnlyList<ITorrentClientTorrent> torrents, CancellationToken cancellationToken)
 		{
-			if((await _movieService.GetMoviesAsync()).Where(x => x.Status == MovieStatusEnum.Transcoding).Any())
+			if((await _movieService.GetMoviesAsync()).Where(x => x.Status == MovieStatusEnum.TranscodingStarted).Any())
 			{
 				return;
 			}
@@ -161,7 +211,7 @@ namespace net.jancerveny.sofaking.WorkerService
 
 		private async Task HandleCrashedTranscoding()
 		{
-			var movieJobs = (await _movieService.GetMoviesAsync()).Where(x => x.Status == MovieStatusEnum.Transcoding);
+			var movieJobs = (await _movieService.GetMoviesAsync()).Where(x => x.Status == MovieStatusEnum.TranscodingStarted);
 			if(movieJobs.Count() > 0)
 			{
 				foreach (var movieJob in movieJobs)
@@ -371,17 +421,44 @@ namespace net.jancerveny.sofaking.WorkerService
 			// Check if any files need transcoding
 			foreach (var videoFile in videoFiles)
 			{
+				_logger.LogInformation($"Analyzing {Path.GetFileName(videoFile)}");
 				var mediaInfo = await _encoderService.GetMediaInfo(videoFile);
-				var flags = EncodingTargetFlags.None;
-
-				if (!HasAcceptableVideo(mediaInfo, new FileInfo(videoFile)))
+				if(mediaInfo == null)
 				{
-					flags |= EncodingTargetFlags.NeedsNewVideo;
+					_logger.LogWarning($"File {Path.GetFileName(videoFile)} returned no {nameof(mediaInfo)}");
+					continue;
 				}
 
-				if (!HasAcceptableAudio(mediaInfo))
+				var flags = EncodingTargetFlags.None;
+
+				try
 				{
-					flags |= EncodingTargetFlags.NeedsNewAudio;
+					if (!HasAcceptableVideo(mediaInfo))
+					{
+						flags |= EncodingTargetFlags.NeedsNewVideo;
+					}
+				}
+				catch (ArgumentException ex)
+				{
+					_logger.LogError($"{Path.GetFileName(videoFile)}", ex);
+					_logger.LogError($"{ex.ParamName}: {ex.Message}");
+					await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.AnalysisVideoFailed);
+					continue;
+				}
+				
+				try
+				{
+					if (!HasAcceptableAudio(mediaInfo))
+					{
+						flags |= EncodingTargetFlags.NeedsNewAudio;
+					}
+				}
+				catch (ArgumentException ex)
+				{
+					_logger.LogError($"{Path.GetFileName(videoFile)}", ex);
+					_logger.LogError($"{ex.ParamName}: {ex.Message}");
+					await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.AnalysisAudioFailed);
+					continue;
 				}
 
 				if (movie.Genres.HasFlag(GenreFlags.Animation))
@@ -425,7 +502,7 @@ namespace net.jancerveny.sofaking.WorkerService
 
 			// If something else is transcoding, then queue
 			var tjmem = _transcodingJobs.Any();
-			var tjdb = (await _movieService.GetMoviesAsync()).Where(x => x.Status == MovieStatusEnum.Transcoding).Any();
+			var tjdb = (await _movieService.GetMoviesAsync()).Where(x => x.Status == MovieStatusEnum.TranscodingStarted).Any();
 			if (tjmem || tjdb)
 			{
 				await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingQueued);
@@ -433,7 +510,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			}
 
 			// Start transcoding by copying our pending tasks into the static global queue
-			await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.Transcoding);
+			await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingStarted);
 			foreach(var transcodingJob in pendingTranscodingJobs)
 			{
 				_transcodingJobs.TryAdd(_transcodingJobs.IsEmpty ? 0 : _transcodingJobs.Last().Key + 1, transcodingJob);
@@ -508,10 +585,19 @@ namespace net.jancerveny.sofaking.WorkerService
 			await _movieService.SetMovieStatus(movie.Id, MovieStatusEnum.Finished);
 		}
 
-		private bool HasAcceptableVideo(IMediaInfo mediaInfo, FileInfo videoFile)
+		private bool HasAcceptableVideo(IMediaInfo mediaInfo)
 		{
+			if (_configuration.MaxPS4FileSizeGb == 0) throw new ArgumentNullException(nameof(_configuration.MaxPS4FileSizeGb));
+			if (_configuration.Resolution == null) throw new ArgumentNullException(nameof(_configuration.Resolution));
+			if (_configuration.AcceptedVideoCodecs == null) throw new ArgumentNullException(nameof(_configuration.AcceptedVideoCodecs));
+			if (mediaInfo == null) throw new ArgumentNullException(nameof(mediaInfo));
+			if (mediaInfo.VideoCodec == null) throw new ArgumentNullException(nameof(mediaInfo.VideoCodec));
+			if (mediaInfo.FileInfo == null) throw new ArgumentNullException(nameof(mediaInfo.FileInfo));
+			if (!int.TryParse(_configuration.Resolution.Split("x")[0], out int allowedVideoWidth)) throw new ArgumentException($"Allowed video width not configured", nameof(_configuration.Resolution));
+			if (!int.TryParse(mediaInfo.VideoResolution.Split("x")[0], out int videoWidth)) throw new ArgumentException($"Unknown video file resolution: {mediaInfo?.VideoResolution ?? "N/A"}", nameof(mediaInfo.VideoResolution));
+
 			var acceptableCodec = false;
-			foreach(var vc in _configuration.AcceptedVideoCodecs)
+			foreach (var vc in _configuration.AcceptedVideoCodecs)
 			{
 				if (mediaInfo.VideoCodec.IndexOf(vc) >= 0)
 				{
@@ -519,14 +605,22 @@ namespace net.jancerveny.sofaking.WorkerService
 					break;
 				}
 			}
-			var acceptableResolution = int.Parse(mediaInfo.VideoResolution.Split("x")[0]) <= int.Parse(_configuration.Resolution.Split("x")[0]);
-			var acceptableSize = videoFile.Length > (_configuration.MaxPS4FileSizeGb * 1024 * 1024);
+
+			var acceptableResolution = videoWidth <= allowedVideoWidth;
+			var acceptableSize = mediaInfo.FileInfo.Length > (_configuration.MaxPS4FileSizeGb * 1024 * 1024);
 			var acceptableBitrate = (mediaInfo.VideoBitrateKbs == null || mediaInfo.VideoBitrateKbs <= _encoderService.TargetVideoBitrateKbs);
 
 			return acceptableCodec && acceptableResolution && acceptableSize && acceptableBitrate;
 		}
 
-		private bool HasAcceptableAudio(IMediaInfo mediaInfo) => _configuration.AcceptedAudioCodecs.Contains(mediaInfo.AudioCodec);
+		private bool HasAcceptableAudio(IMediaInfo mediaInfo)
+		{
+			if (_configuration.AcceptedAudioCodecs == null) throw new ArgumentNullException(nameof(_configuration.AcceptedAudioCodecs));
+			if (mediaInfo == null) throw new ArgumentNullException(nameof(mediaInfo));
+			if (mediaInfo.AudioCodec == null) throw new ArgumentNullException(nameof(mediaInfo.AudioCodec));
+
+			return _configuration.AcceptedAudioCodecs.Contains(mediaInfo.AudioCodec);
+		}
 		
 		private string MovieDownloadDirectory(ITorrentClientTorrent torrent, out string torrentFileNameExtension)
 		{
