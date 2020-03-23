@@ -38,12 +38,12 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			var inputFile = new MediaFile(filePath);
 			var metaData = await ffmpeg.GetMetaDataAsync(inputFile);
 
-			int? bitrate = metaData.Duration.TotalSeconds == 0 ? null : (int?)Math.Ceiling((new FileInfo(filePath).Length / 1024) / metaData.Duration.TotalSeconds);
+			int? bitrate = metaData.Duration.TotalSeconds == 0 ? null : (int?)(Math.Ceiling(metaData.FileInfo.Length / 1024d) / metaData.Duration.TotalSeconds);
 			
 			return new MediaInfo { 
 				VideoCodec = metaData?.VideoData?.Format,
 				VideoResolution = metaData?.VideoData?.FrameSize,
-				VideoBitrateKbs = bitrate,
+				BitrateKbs = bitrate,
 				FileInfo = metaData?.FileInfo,
 				AudioCodec = metaData?.AudioData?.Format // I assume this takes the default audio stream...
 			};

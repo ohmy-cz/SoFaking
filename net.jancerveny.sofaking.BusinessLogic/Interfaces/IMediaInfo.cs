@@ -6,7 +6,7 @@ namespace net.jancerveny.sofaking.BusinessLogic.Interfaces
 	{
 		string VideoCodec { get; set; }
 		string VideoResolution { get; set; }
-		int? VideoBitrateKbs { get; set; }
+		int? BitrateKbs { get; set; }
 		public FileInfo FileInfo { get; set; }
 		string AudioCodec { get; set; }
 	}
