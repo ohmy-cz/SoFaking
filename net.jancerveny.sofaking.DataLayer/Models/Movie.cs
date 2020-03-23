@@ -24,6 +24,12 @@ namespace net.jancerveny.sofaking.DataLayer.Models
         public GenreFlags Genres { get; set; }
         public string ImageUrl { get; set; }
         public DateTime? TranscodingStarted { get; set; }
+        public int? Year { get; set; }
+        public string Director { get; set; }
+        public string Description { get; set; }
+        public string Show { get; set; }
+        public string EpisodeId { get; set; }
+
         public Movie()
         {
             Added = DateTime.Now;

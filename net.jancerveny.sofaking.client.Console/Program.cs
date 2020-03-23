@@ -335,7 +335,10 @@ namespace net.jancerveny.sofaking.client.console
                                     TorrentHash = result.Hash,
                                     ImageUrl = selectedMovie.ImageUrl,
                                     SizeGb = selectedTorrent.SizeGb,
-                                    Genres = selectedMovie.Genres
+                                    Genres = selectedMovie.Genres,
+                                    Year = selectedMovie.ReleaseYear
+                                    // TODO: Add more regexes to extract other info for metadata.
+                                    //Description = selectedMovie
                                 };
 
                                 if (!await movieService.AddMovie(m))

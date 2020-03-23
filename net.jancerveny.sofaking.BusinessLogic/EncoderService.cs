@@ -8,6 +8,7 @@ using net.jancerveny.sofaking.BusinessLogic.Models;
 using net.jancerveny.sofaking.Common.Models;
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,7 +22,10 @@ namespace net.jancerveny.sofaking.BusinessLogic
 		private readonly SoFakingConfiguration _sofakingConfiguration;
 		private static string _file;
 		private static bool _busy;
-		public int TargetVideoBitrateKbs { get { return _configuration.OutputVideoBitrateMbits * 1024; } }
+		/// <summary>
+		/// Compound bitrate for video and audio
+		/// </summary>
+		public int TargetBitrateKbs { get { return (_configuration.OutputVideoBitrateMbits + _configuration.OutputAudioBitrateMbits) * 1024; } }
 		public string CurrentFile { get { return _file; } }
 
 		private const char optionalFlag = '?';
@@ -38,12 +42,12 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			var inputFile = new MediaFile(filePath);
 			var metaData = await ffmpeg.GetMetaDataAsync(inputFile);
 
-			int? bitrate = metaData.Duration.TotalSeconds == 0 ? null : (int?)(Math.Ceiling(metaData.FileInfo.Length / 1024d) / metaData.Duration.TotalSeconds);
+			int? bitrateKbs = metaData.Duration.TotalSeconds == 0 ? null : (int?)(Math.Ceiling((metaData.FileInfo.Length * 8) / 1024d) / metaData.Duration.TotalSeconds);
 			
 			return new MediaInfo { 
 				VideoCodec = metaData?.VideoData?.Format,
 				VideoResolution = metaData?.VideoData?.FrameSize,
-				BitrateKbs = bitrate,
+				BitrateKbs = bitrateKbs,
 				FileInfo = metaData?.FileInfo,
 				AudioCodec = metaData?.AudioData?.Format // I assume this takes the default audio stream...
 			};
@@ -72,16 +76,16 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 				var destinationFile = Path.Combine(transcodingJob.DestinationFolder, Path.GetFileNameWithoutExtension(_file) + ".mkv");
 				var ffmpeg = new Engine(_configuration.FFMPEGBinary);
-				//var inputFile = new MediaFile(_file);
-				//var metaData = await ffmpeg.GetMetaDataAsync(inputFile);
 				var temporaryFile = Path.Combine(_configuration.TempFolder, Path.GetFileNameWithoutExtension(_file) + ".mkv");
 
-				// Discard all streams except those in 
-				//_configuration.AudioLanguages
+				// Discard all streams except those in _configuration.AudioLanguages
 				// Reencode the english stream only, and add it as primary stream. Copy all other desirable audio languages from the list.
 				var a = new StringBuilder();
 				a.Append($"-i \"{_file}\" ");
 				a.Append("-c copy ");
+
+				// Copy metadata
+				a.Append("-map_metadata 0 ");
 
 				// Video
 				a.Append($"-map 0:v -c:v {(transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? _configuration.OutputVideoCodec + $" -b:v {_configuration.OutputVideoBitrateMbits}M -vf scale=1080:-2" : "copy")} ");
@@ -119,6 +123,22 @@ namespace net.jancerveny.sofaking.BusinessLogic
 #if DEBUG
 				a.Append("-t 00:01:00.0 "); // only for debug. This makes ffmpeg never return though
 #endif
+
+				// Metadata
+				if (transcodingJob.Metadata != null && transcodingJob.Metadata.Count > 0)
+				{
+					foreach (var m in transcodingJob.Metadata)
+					{
+						if(m.Key == FFMPEGMetadataEnum.cover && !string.IsNullOrWhiteSpace(m.Value))
+						{
+							a.Append($"-attach \"{m.Value}\" -metadata:s:t mimetype=image/jpeg ");
+							continue;
+						}
+
+						a.Append($"-metadata {Enum.GetName(typeof(FFMPEGMetadataEnum), m.Key)}=\"{m.Value}\" ");
+					}
+				}
+
 				a.Append($"\"{temporaryFile}\"");
 
 				ffmpeg.Progress += (object sender, ConversionProgressEventArgs e) =>
@@ -128,6 +148,8 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				
 				ffmpeg.Error += (object sender, ConversionErrorEventArgs e) => {
 					_logger.LogError($"Encoding error {e.Exception.Message}", e.Exception);
+					File.Delete(temporaryFile);
+					CleanTempData(transcodingJob);
 					onDoneInternal();
 					_busy = false;
 					_file = null;
@@ -142,6 +164,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 					}
 
 					File.Move(temporaryFile, destinationFile);
+					CleanTempData(transcodingJob);
 					_logger.LogWarning($"Encoding complete! {_file}");
 					onDoneInternal();
 					_busy = false;
@@ -152,6 +175,19 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 				await ffmpeg.ExecuteAsync(a.ToString(), transcodingJob.CancellationToken);
 			});
+		}
+
+		private static void CleanTempData(ITranscodingJob transcodingJob)
+		{
+			var coverImageFile = transcodingJob.Metadata
+				.Where(x => x.Key == FFMPEGMetadataEnum.cover)
+				.Select(x => x.Value)
+				.FirstOrDefault();
+
+			if (!string.IsNullOrWhiteSpace(coverImageFile))
+			{
+				File.Delete(coverImageFile);
+			}
 		}
 	}
 }

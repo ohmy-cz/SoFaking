@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using net.jancerveny.sofaking.DataLayer;
@@ -9,9 +10,10 @@ using net.jancerveny.sofaking.DataLayer;
 namespace net.jancerveny.sofaking.DataLayer.Migrations
 {
     [DbContext(typeof(SoFakingContext))]
-    partial class SoFakingContextModelSnapshot : ModelSnapshot
+    [Migration("20200323155129_AddingMetadata")]
+    partial class AddingMetadata
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 
 namespace net.jancerveny.sofaking.BusinessLogic.Interfaces
@@ -11,5 +12,6 @@ namespace net.jancerveny.sofaking.BusinessLogic.Interfaces
 		Action OnComplete { get; set; }
 		Action OnError { get; set;  } 
 		CancellationToken CancellationToken { get; set; }
+		Dictionary<FFMPEGMetadataEnum, string> Metadata { get; set; }
 	}
 }

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using net.jancerveny.sofaking.BusinessLogic;
 using net.jancerveny.sofaking.BusinessLogic.Interfaces;
 using net.jancerveny.sofaking.BusinessLogic.Models;
+using net.jancerveny.sofaking.Common.Utils;
 using net.jancerveny.sofaking.DataLayer.Models;
 using net.jancerveny.sofaking.WorkerService.Models;
 using System;
@@ -381,17 +382,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			{
 				if (!string.IsNullOrWhiteSpace(movie.ImageUrl))
 				{
-					using (var client = _clientFactory.CreateClient())
-					{
-						using (var result = await client.GetAsync(movie.ImageUrl))
-						{
-							if (result.IsSuccessStatusCode)
-							{
-								var content = await result.Content.ReadAsByteArrayAsync();
-								await File.WriteAllBytesAsync(Path.Combine(MovieFinishedDirectory(movie), "Cover.jpg"), content);
-							}
-						}
-					}
+					await Download.GetFile(_clientFactory, movie.ImageUrl, Path.Combine(MovieFinishedDirectory(movie), "Cover.jpg"));
 				}
 			}
 			catch (Exception ex)
@@ -422,6 +413,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			foreach (var videoFile in videoFiles)
 			{
 				_logger.LogInformation($"Analyzing {Path.GetFileName(videoFile)}");
+				string coverImageFile = null;
 				var mediaInfo = await _encoderService.GetMediaInfo(videoFile);
 				if(mediaInfo == null)
 				{
@@ -472,6 +464,18 @@ namespace net.jancerveny.sofaking.WorkerService
 					continue;
 				}
 
+				if (!string.IsNullOrWhiteSpace(movie.ImageUrl))
+				{
+					try
+					{
+						coverImageFile = Regexes.FileNamePattern.Match(videoFile).Groups[1].Value + ".jpg";
+						await Download.GetFile(_clientFactory, movie.ImageUrl, coverImageFile);
+					} catch(Exception _)
+					{
+						coverImageFile = null;
+					}
+				}
+
 				pendingTranscodingJobs.Add(new TranscodingJob
 				{
 					SourceFile = videoFile,
@@ -489,7 +493,17 @@ namespace net.jancerveny.sofaking.WorkerService
 						_logger.LogError($"Transcoding had some error");
 						await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingError);
 					},
-					CancellationToken = cancellationToken
+					CancellationToken = cancellationToken,
+					Metadata = new Dictionary<FFMPEGMetadataEnum, string> {
+						{ FFMPEGMetadataEnum.title, movie.Title },
+						{ FFMPEGMetadataEnum.cover, coverImageFile },
+						{ FFMPEGMetadataEnum.year, movie.Year.ToString() },
+						{ FFMPEGMetadataEnum.author, movie.Director },
+						{ FFMPEGMetadataEnum.description, movie.Description },
+						{ FFMPEGMetadataEnum.episode_id, movie.EpisodeId },
+						{ FFMPEGMetadataEnum.genre, movie.Genres.ToString() },
+						{ FFMPEGMetadataEnum.show, movie.Show }
+					}
 				});
 			}
 
@@ -608,7 +622,7 @@ namespace net.jancerveny.sofaking.WorkerService
 
 			var acceptableResolution = videoWidth <= allowedVideoWidth;
 			var acceptableSize = mediaInfo.FileInfo.Length > (_configuration.MaxPS4FileSizeGb * 1024 * 1024);
-			var acceptableBitrate = (mediaInfo.BitrateKbs == null || mediaInfo.BitrateKbs <= _encoderService.TargetVideoBitrateKbs);
+			var acceptableBitrate = (mediaInfo.BitrateKbs == null || mediaInfo.BitrateKbs <= _encoderService.TargetBitrateKbs);
 
 			return acceptableCodec && acceptableResolution && acceptableSize && acceptableBitrate;
 		}
