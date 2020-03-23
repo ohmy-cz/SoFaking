@@ -21,8 +21,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
             public static Regex ImdbScore => new Regex(@"class=""imdbRating""(?:.+?)<span itemprop=""ratingValue"">([\d.,]+?)<\/span>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
             public static Regex MetacriticScore => new Regex(@"<(?:[a-z]+?)\sclass=""metacriticScore(?:.*?)?"">\s*<span>(.+?)<\/span>\s*<\/div>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
             public static Regex ValidImdbObjectId = new Regex(@"tt\d+", RegexOptions.Compiled);
-            public static Regex TitleWrapper = new Regex(@"class=""title_wrapper"">(.+?)<\/div>\s*?<\/div>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
-            public static Regex Genres = new Regex(@"\?genres=(.+?)&explore(?:.+?)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            public static Regex LdJson = new Regex(@"<script type=""application/ld\+json"">(.+?)</script>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         }
 
         private readonly IHttpClientFactory _clientFactory;
@@ -83,20 +82,32 @@ namespace net.jancerveny.sofaking.BusinessLogic
                         }
 
                         var imdbMovieDetailResponse = await movieDetailResponse.Content.ReadAsStringAsync();
-                        double.TryParse(Regexes.ImdbScore.Match(imdbMovieDetailResponse).Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double imdbScore);
+                        var ldJson = Regexes.LdJson.Match(imdbMovieDetailResponse);
+                        if (!ldJson.Success)
+                        {
+                            return null;
+                        }
+
+                        var rawJson = ldJson.Groups[1].Value;
+                        IMDBStructuredData structuredData;
+                        try
+                        {
+                            structuredData = JsonSerializer.Deserialize<IMDBStructuredData>(rawJson, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                        } catch(Exception ex)
+                        {
+                            return null;
+                        }
+
+                        double.TryParse(structuredData.AggregateRating.RatingValue, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double imdbScore);
                         int.TryParse(Regexes.MetacriticScore.Match(imdbMovieDetailResponse).Groups[1].Value, out int metacriticScore);
                         GenreFlags genres = GenreFlags.Other;
-                        var titleWrapper = Regexes.TitleWrapper.Match(imdbMovieDetailResponse)?.Groups[1]?.Value;
-                        if(!string.IsNullOrWhiteSpace(titleWrapper))
+                        foreach (string genre in structuredData.Genre)
                         {
-                            foreach (Match genre in Regexes.Genres.Matches(titleWrapper))
+                            foreach (GenreFlags enumVal in Enum.GetValues(typeof(GenreFlags)))
                             {
-                                foreach (GenreFlags enumVal in Enum.GetValues(typeof(GenreFlags)))
+                                if(enumVal.ToString().ToLower() == genre.ToLower().Replace("-", string.Empty).Replace(" ", string.Empty))
                                 {
-                                    if(enumVal.ToString().ToLower() == genre.Groups[1].Value.ToLower().Replace("-", string.Empty))
-                                    {
-                                        genres |= enumVal;
-                                    }
+                                    genres |= enumVal;
                                 }
                             }
                         }
@@ -109,7 +120,9 @@ namespace net.jancerveny.sofaking.BusinessLogic
                             Score = imdbScore,
                             ScoreMetacritic = metacriticScore,
                             ImageUrl = imdbMatch.Image?.ImageUrl,
-                            Genres = genres
+                            Genres = genres,
+                            Description = structuredData.Description,
+                            Director = structuredData.Director?.Name
                         };
                     }
                 });

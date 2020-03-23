@@ -129,7 +129,12 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				{
 					foreach (var m in transcodingJob.Metadata)
 					{
-						if(m.Key == FFMPEGMetadataEnum.cover && !string.IsNullOrWhiteSpace(m.Value))
+						if(string.IsNullOrWhiteSpace(m.Value))
+						{
+							continue;
+						}
+
+						if(m.Key == FFMPEGMetadataEnum.cover)
 						{
 							a.Append($"-attach \"{m.Value}\" -metadata:s:t mimetype=image/jpeg ");
 							continue;

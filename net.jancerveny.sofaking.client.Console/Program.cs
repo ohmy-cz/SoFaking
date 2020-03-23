@@ -336,9 +336,9 @@ namespace net.jancerveny.sofaking.client.console
                                     ImageUrl = selectedMovie.ImageUrl,
                                     SizeGb = selectedTorrent.SizeGb,
                                     Genres = selectedMovie.Genres,
-                                    Year = selectedMovie.ReleaseYear
-                                    // TODO: Add more regexes to extract other info for metadata.
-                                    //Description = selectedMovie
+                                    Year = selectedMovie.ReleaseYear,
+                                    Director = selectedMovie.Director,
+                                    Description = selectedMovie.Description
                                 };
 
                                 if (!await movieService.AddMovie(m))
