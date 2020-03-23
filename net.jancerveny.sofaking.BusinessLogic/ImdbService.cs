@@ -98,7 +98,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
                             return null;
                         }
 
-                        double.TryParse(structuredData.AggregateRating.RatingValue, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double imdbScore);
+                        double.TryParse(structuredData.AggregateRating?.RatingValue, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double imdbScore);
                         int.TryParse(Regexes.MetacriticScore.Match(imdbMovieDetailResponse).Groups[1].Value, out int metacriticScore);
                         GenreFlags genres = GenreFlags.Other;
                         foreach (string genre in structuredData.Genre)
