@@ -214,6 +214,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			if (torrent == null)
 			{
 				// TODO: Find the next working queued job immediately. Now it waits for the next loop iteration.
+				// TODO: Make Torrent optional at this point?
 				await _movieService.SetMovieStatus(queuedMovieJob.Id, MovieStatusEnum.TorrentNotFound);
 				_logger.LogWarning($"Could not find a matching torrent for job id {queuedMovieJob.Id}: {queuedMovieJob.TorrentName}");
 				return;
