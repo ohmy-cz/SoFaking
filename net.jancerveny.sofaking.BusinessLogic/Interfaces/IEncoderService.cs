@@ -12,5 +12,6 @@ namespace net.jancerveny.sofaking.BusinessLogic.Interfaces
 		Task<IMediaInfo> GetMediaInfo(string filePath);
 		int TargetBitrateKbs { get; }
 		string CurrentFile { get; }
+		void Kill();
 	}
 }

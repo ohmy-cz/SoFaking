@@ -184,6 +184,14 @@ namespace net.jancerveny.sofaking.WorkerService
 			var longRunningTranscoding = (await _movieService.GetMoviesAsync()).Where(x => x.Status == MovieStatusEnum.TranscodingStarted && x.TranscodingStarted != null && x.TranscodingStarted < DateTime.Now.AddHours(_configuration.TranscodingStaleAfterH * -1)).FirstOrDefault();
 			if (longRunningTranscoding != null)
 			{
+				_logger.LogWarning($"Transcoding of {longRunningTranscoding.TorrentName} has been going for {(DateTime.Now - longRunningTranscoding.TranscodingStarted.Value):hh\\:mm\\:ss}. Cancelling.");
+				try
+				{
+					_encoderService.Kill();
+				} catch(Exception ex)
+				{
+					_logger.LogError($"Problem killing the encoder: {ex.Message}", ex);
+				}
 				await _movieService.SetMovieStatus(longRunningTranscoding.Id, MovieStatusEnum.TranscodingRunningTooLong);
 			}
 		}

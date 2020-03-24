@@ -22,6 +22,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 		private readonly SoFakingConfiguration _sofakingConfiguration;
 		private static string _file;
 		private static bool _busy;
+		private CancellationTokenSource _cancellationTokenSource;
 		/// <summary>
 		/// Compound bitrate for video and audio
 		/// </summary>
@@ -31,6 +32,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 		private const char optionalFlag = '?';
 		public EncoderService(ILogger<EncoderService> logger, EncoderConfiguration configuration, SoFakingConfiguration sofakingConfiguration)
 		{
+			_cancellationTokenSource = new CancellationTokenSource();
 			_logger = logger;
 			_configuration = configuration;
 			_sofakingConfiguration = sofakingConfiguration;
@@ -178,7 +180,15 @@ namespace net.jancerveny.sofaking.BusinessLogic
 					onSuccessInternal();
 				};
 
-				await ffmpeg.ExecuteAsync(a.ToString(), transcodingJob.CancellationToken);
+				_cancellationTokenSource.Token.Register(() => {
+					File.Delete(temporaryFile);
+					CleanTempData(transcodingJob);
+					onDoneInternal();
+					_file = null;
+					_busy = false;
+				});
+
+				await ffmpeg.ExecuteAsync(a.ToString(), _cancellationTokenSource.Token);
 			});
 		}
 
@@ -193,6 +203,11 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			{
 				File.Delete(coverImageFile);
 			}
+		}
+
+		public void Kill()
+		{
+			_cancellationTokenSource.Cancel();
 		}
 	}
 }
