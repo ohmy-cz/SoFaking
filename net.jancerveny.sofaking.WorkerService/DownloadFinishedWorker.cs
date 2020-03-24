@@ -76,6 +76,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			while (!stoppingToken.IsCancellationRequested)
 			{
 				_logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
+				_logger.LogInformation($"Transcoding: {_encoderService.CurrentFile ?? "Nothing"}");
 				IReadOnlyList<ITorrentClientTorrent> torrents;
 
 				try
@@ -180,7 +181,7 @@ namespace net.jancerveny.sofaking.WorkerService
 
 		private async Task HandleLongRunningTranscoding()
 		{
-			var longRunningTranscoding = (await _movieService.GetMoviesAsync()).Where(x => x.Status == MovieStatusEnum.TranscodingStarted && x.TranscodingStarted != null && x.TranscodingStarted < DateTime.Now.AddDays(-1)).FirstOrDefault();
+			var longRunningTranscoding = (await _movieService.GetMoviesAsync()).Where(x => x.Status == MovieStatusEnum.TranscodingStarted && x.TranscodingStarted != null && x.TranscodingStarted < DateTime.Now.AddHours(_configuration.TranscodingStaleAfterH * -1)).FirstOrDefault();
 			if (longRunningTranscoding != null)
 			{
 				await _movieService.SetMovieStatus(longRunningTranscoding.Id, MovieStatusEnum.TranscodingRunningTooLong);
@@ -194,7 +195,12 @@ namespace net.jancerveny.sofaking.WorkerService
 				return;
 			}
 
-			var queuedMovieJob = (await _movieService.GetMoviesAsync()).Where(x => x.Status == MovieStatusEnum.TranscodingQueued || x.Status == MovieStatusEnum.TranscodingIncomplete).FirstOrDefault();
+			var queuedMovieJob = (await _movieService.GetMoviesAsync())
+				.Where(x => 
+					x.Status == MovieStatusEnum.TranscodingQueued || 
+					x.Status == MovieStatusEnum.TranscodingIncomplete)
+				.OrderByDescending(x => x.Status == MovieStatusEnum.TranscodingQueued)
+				.FirstOrDefault();
 			
 			if (queuedMovieJob != null)
 			{
