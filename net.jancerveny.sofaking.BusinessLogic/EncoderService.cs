@@ -150,7 +150,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 				ffmpeg.Progress += (object sender, ConversionProgressEventArgs e) =>
 				{
-					_logger.LogInformation($"{e.Input?.FileInfo?.Name} -> {e.Output?.FileInfo?.Name}\nProcessed duration: {e.ProcessedDuration}\nBitrate: {e.Bitrate}\nSize: {e.SizeKb} kb");
+					_logger.LogInformation($"Processed duration: {e.ProcessedDuration}\tFPS:{e.Fps}\tBitrate: {e.Bitrate}\tSize: {e.SizeKb} kb\t{Path.GetFileName(_file)}");
 				};
 				
 				ffmpeg.Error += (object sender, ConversionErrorEventArgs e) => {
@@ -181,6 +181,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				};
 
 				_cancellationTokenSource.Token.Register(() => {
+					_logger.LogWarning("Encoding cancelled");
 					File.Delete(temporaryFile);
 					CleanTempData(transcodingJob);
 					onDoneInternal();

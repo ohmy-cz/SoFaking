@@ -59,9 +59,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			}
 			catch (Exception ex)
 			{
-				// Get stack trace for the exception with source file information
 				var st = new StackTrace(ex, true);
-				// Get the top stack frame
 				var frame0 = st.GetFrame(0);
 				var frame1 = st.GetFrame(1);
 				var frame2 = st.GetFrame(2);
@@ -272,11 +270,15 @@ namespace net.jancerveny.sofaking.WorkerService
 					continue;
 				}
 
+				_logger.LogInformation($"Found a downloaded movie {movieJob.TorrentName}");
+
 				// Move the file in its own folder, if the torrent was a single file.
 				var downloadDirectory = MovieDownloadDirectory(torrent, out string torrentFileNameExtension);
 
 				if (!string.IsNullOrWhiteSpace(torrentFileNameExtension))
 				{
+					_logger.LogInformation($"Moving downloaded file to its own directory {torrent}");
+
 					var downloadFile = Path.Combine(_configuration.MoviesDownloadDir, torrent.Name);
 					if (!Directory.Exists(downloadDirectory) && !File.Exists(downloadFile))
 					{
