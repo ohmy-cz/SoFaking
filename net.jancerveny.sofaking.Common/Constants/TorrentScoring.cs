@@ -11,6 +11,10 @@ namespace net.jancerveny.sofaking.Common.Constants
         {
             // Positive tags will result in higher score
             { "1080p", 110 },
+            { "REMASTERED", 105 },
+            { "Extended", 105 },
+            { "Unrated", 105 },
+            { "DirectorsCut", 105 },
             { "MULTI", 105 }, // Possibly multiple audio languages
             { "MultiLang", 105 }, // Possibly multiple audio languages
             { "Atmos", 100 },
@@ -47,7 +51,6 @@ namespace net.jancerveny.sofaking.Common.Constants
             { "AVI", -50},
             { "AAC", -90},
             { "AAC2.0", -100},
-            { "720p", -150},
             { "Hindi", -999}, 
             { "Korean", -999},
             // Below 1000 are forbidden tags - these will be immediately removed from consideration
@@ -65,8 +68,27 @@ namespace net.jancerveny.sofaking.Common.Constants
             { "R5", BannedTag },
             { "scr", BannedTag },
             { "480p", BannedTag },
+            { "720p", BannedTag},
             { "1080i", BannedTag },
             { "HDTV", BannedTag },
+            { "Collection", BannedTag }, // For the metadatatagging to work properly, we need to download one movie at a time.
+            { "Duology", BannedTag }, // -- || --
+            { "Trilogy", BannedTag }, // -- || --
+            { "Tetralogy", BannedTag }, // -- || --
+            { "Quadrilogy", BannedTag }, // -- || --
+            { "Quadrology", BannedTag }, // -- || --
+            { "1,2,3", BannedTag }, // -- || --
+            { "1, 2, 3", BannedTag }, // -- || --
+            { "I,II,III", BannedTag }, // -- || --
+            { "I, II, III", BannedTag }, // -- || --
+            { "1,2,3,4", BannedTag }, // -- || --
+            { "1, 2, 3, 4", BannedTag }, // -- || --
+            { "I,II,III,IV", BannedTag }, // -- || --
+            { "I, II, III, IV", BannedTag }, // -- || --
+            { "1,2,3,4,5", BannedTag }, // -- || --
+            { "1, 2, 3, 4, 5", BannedTag }, // -- || --
+            { "I,II,III,IV,V", BannedTag }, // -- || --
+            { "I, II, III, IV, V", BannedTag }, // -- || --
             { "2160p", BannedTag }, // My screen doesn't support this format, skipping
             { "4K", BannedTag }, // My screen doesn't support this format, skipping
             { "UHD", BannedTag }, // My screen doesn't support this format, skipping

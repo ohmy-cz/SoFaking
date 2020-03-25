@@ -6,9 +6,11 @@ using net.jancerveny.sofaking.BusinessLogic.Exceptions;
 using net.jancerveny.sofaking.BusinessLogic.Interfaces;
 using net.jancerveny.sofaking.BusinessLogic.Models;
 using net.jancerveny.sofaking.Common.Models;
+using net.jancerveny.sofaking.Common.Utils;
 using System;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,32 +22,41 @@ namespace net.jancerveny.sofaking.BusinessLogic
 		private readonly ILogger<EncoderService> _logger;
 		private readonly EncoderConfiguration _configuration;
 		private readonly SoFakingConfiguration _sofakingConfiguration;
-		private static string _file;
 		private static bool _busy;
+		private string _tempFile;
 		private CancellationTokenSource _cancellationTokenSource;
+		private ITranscodingJob _transcodingJob;
+		private string _commandFile;
+		private string _coverImageFile;
 		/// <summary>
 		/// Compound bitrate for video and audio
 		/// </summary>
 		public int TargetBitrateKbs { get { return (_configuration.OutputVideoBitrateMbits + _configuration.OutputAudioBitrateMbits) * 1024; } }
-		public string CurrentFile { get { return _file; } }
-
+		public string CurrentFile { get; private set; }
+		public bool Busy { get { return _busy; } }
+		public DateTime? TranscodingStarted { get; private set; }
 		private const char optionalFlag = '?';
+		private static long? _lastTempFileSize;
+		private static readonly TimeSpan stalledCheckInterval = new TimeSpan(0, 5, 0);
+		private Action _onDoneInternal;
+
 		public EncoderService(ILogger<EncoderService> logger, EncoderConfiguration configuration, SoFakingConfiguration sofakingConfiguration)
 		{
 			_cancellationTokenSource = new CancellationTokenSource();
 			_logger = logger;
 			_configuration = configuration;
 			_sofakingConfiguration = sofakingConfiguration;
+			StallMonitor();
 		}
 
 		public async Task<IMediaInfo> GetMediaInfo(string filePath)
 		{
 			var ffmpeg = new Engine(_configuration.FFMPEGBinary);
 			var inputFile = new MediaFile(filePath);
-			var metaData = await ffmpeg.GetMetaDataAsync(inputFile);
+			var metaData = await ffmpeg.GetMetaDataAsync(inputFile); // TODO: Make own, this sometimes fails
 
 			int? bitrateKbs = metaData.Duration.TotalSeconds == 0 ? null : (int?)(Math.Ceiling((metaData.FileInfo.Length * 8) / 1024d) / metaData.Duration.TotalSeconds);
-			
+
 			return new MediaInfo { 
 				VideoCodec = metaData?.VideoData?.Format,
 				VideoResolution = metaData?.VideoData?.FrameSize,
@@ -55,54 +66,67 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			};
 		}
 
-		public void StartTranscoding(ITranscodingJob transcodingJob, Action onDoneInternal, Action onSuccessInternal)
+		public void StartTranscoding(ITranscodingJob transcodingJob, Action onStart, Action onDoneInternal, Action onSuccessInternal, CancellationToken cancellationToken = default)
 		{
-			if(!File.Exists(transcodingJob.SourceFile))
+			if (!File.Exists(transcodingJob.SourceFile))
 			{
 				throw new EncoderException($"Cannot start transcoding. File {transcodingJob.SourceFile} does not exist.");
 			}
 
-			if(_busy)
+			if(Busy)
 			{
-				_logger.LogWarning("Cannot start another transcoding, encoder busy.");
+				_logger.LogWarning($"Cannot start another transcoding, encoder busy with {CurrentFile}. {transcodingJob.SourceFile} rejected.");
 				return;
 			}
 
-			_file = transcodingJob.SourceFile;
+			// TODO: Find a nicer way?
+			_onDoneInternal = onDoneInternal;
+			_transcodingJob = transcodingJob;
+
+			cancellationToken.Register(() => {
+				_logger.LogDebug("Encoder cancelled from the outside");
+				this.Kill();
+			});
+
+			CurrentFile = _transcodingJob.SourceFile;
 			Task.Run(async () =>
 			{
-				if (transcodingJob.Action == EncodingTargetFlags.None)
+				if (_transcodingJob.Action == EncodingTargetFlags.None)
 				{
 					throw new Exception("No transcoding action selected");
 				}
 
-				var destinationFile = Path.Combine(transcodingJob.DestinationFolder, Path.GetFileNameWithoutExtension(_file) + ".mkv");
+				_busy = true;
+				var destinationFile = Path.Combine(_transcodingJob.DestinationFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".mkv");
 				var ffmpeg = new Engine(_configuration.FFMPEGBinary);
-				var temporaryFile = Path.Combine(_configuration.TempFolder, Path.GetFileNameWithoutExtension(_file) + ".mkv");
+				_tempFile = Path.Combine(_configuration.TempFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".mkv");
+				_commandFile = Path.Combine(_configuration.TempFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".sh");
+				_coverImageFile = Path.Combine(_configuration.TempFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".jpg");
 
 				// Discard all streams except those in _configuration.AudioLanguages
 				// Reencode the english stream only, and add it as primary stream. Copy all other desirable audio languages from the list.
+				_logger.LogDebug("Constructing the encoder command");
 				var a = new StringBuilder();
-				a.Append($"-i \"{_file}\" ");
+				a.Append($"-i \"{CurrentFile}\" ");
 				a.Append("-c copy ");
 
 				// Copy metadata
 				a.Append("-map_metadata 0 ");
 
 				// Video
-				a.Append($"-map 0:v -c:v {(transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? _configuration.OutputVideoCodec + $" -b:v {_configuration.OutputVideoBitrateMbits}M -vf scale=1080:-2" : "copy")} ");
+				a.Append($"-map 0:v -c:v {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? _configuration.OutputVideoCodec + $" -b:v {_configuration.OutputVideoBitrateMbits}M -vf scale=1080:-2" : "copy")} ");
 				a.Append("-preset veryslow -crf 18 ");
-				a.Append($"-tune {(transcodingJob.Action.HasFlag(EncodingTargetFlags.VideoIsAnimation) ? "animation" : "film")} ");
+				a.Append($"-tune {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.VideoIsAnimation) ? "animation" : "film")} ");
 
 				// Audio
 				a.Append("-map -0:a "); // Drop all audio tracks, and then add only those we want below.
 				var audioTrackCounter = 0;
 				foreach(var lang in _sofakingConfiguration.AudioLanguages)
 				{
-					a.Append($"-map 0:a:m:language:{lang}{optionalFlag} -c:a:{audioTrackCounter} {(transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewAudio) ? $"{_configuration.OutputAudioCodec} -b:a:{audioTrackCounter} {_configuration.OutputAudioBitrateMbits}M" : "copy")} ");
+					a.Append($"-map 0:a:m:language:{lang}{optionalFlag} -c:a:{audioTrackCounter} {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewAudio) ? $"{_configuration.OutputAudioCodec} -b:a:{audioTrackCounter} {_configuration.OutputAudioBitrateMbits}M" : "copy")} ");
 					if(audioTrackCounter == 0)
 					{
-						if(transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewAudio))
+						if(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewAudio))
 						{
 							a.Append($"-metadata:s:a:{audioTrackCounter} title=\"PS4 Compatible\" ");
 						}
@@ -113,7 +137,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 					// The English default track  is usually in a very high quality that we can't play on a PS4, but we don't want to lose
 					// So we copy it as the second track.
-					if (lang == "eng" && transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewAudio))
+					if (lang == "eng" && _transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewAudio))
 					{
 						a.Append($"-map 0:a:m:language:{lang}{optionalFlag} -c:a:{audioTrackCounter} copy ");
 						audioTrackCounter++;
@@ -127,9 +151,13 @@ namespace net.jancerveny.sofaking.BusinessLogic
 #endif
 
 				// Metadata
-				if (transcodingJob.Metadata != null && transcodingJob.Metadata.Count > 0)
+				// See: https://matroska.org/technical/specs/tagging/index.html
+				a.Append("-metadata ENCODER=\"SoFaking\" ");
+				a.Append($"-metadata COMMENT=\"Original file name: {Path.GetFileName(CurrentFile)}\" ");
+				a.Append($"-metadata ENCODER_SETTINGS=\"V: {_configuration.OutputVideoCodec}@{_configuration.OutputVideoBitrateMbits}, A:{_configuration.OutputAudioCodec}@{_configuration.OutputAudioBitrateMbits}\" ");
+				if (_transcodingJob.Metadata != null && _transcodingJob.Metadata.Count > 0)
 				{
-					foreach (var m in transcodingJob.Metadata)
+					foreach (var m in _transcodingJob.Metadata)
 					{
 						if(string.IsNullOrWhiteSpace(m.Value))
 						{
@@ -138,76 +166,208 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 						if(m.Key == FFMPEGMetadataEnum.cover)
 						{
-							a.Append($"-attach \"{m.Value}\" -metadata:s:t mimetype=image/jpeg ");
+							if (!string.IsNullOrWhiteSpace(m.Value))
+							{
+								try
+								{
+									await Download.GetFile(m.Value, _coverImageFile);
+									a.Append($"-attach \"{_coverImageFile}\" -metadata:s:t mimetype=image/jpeg ");
+								}
+								catch (Exception _)
+								{
+									_coverImageFile = null;
+								}
+							}
+
 							continue;
 						}
 
-						a.Append($"-metadata {Enum.GetName(typeof(FFMPEGMetadataEnum), m.Key)}=\"{m.Value}\" ");
+						if(m.Key == FFMPEGMetadataEnum.year)
+						{
+							if (int.TryParse(m.Value, out int year))
+							{
+								a.Append($"-metadata DATE_RELEASED=\"{year}\" ");
+							}
+
+							continue;
+						}
+
+						if (m.Key == FFMPEGMetadataEnum.description)
+						{
+							if (int.TryParse(m.Value, out int year))
+							{
+								a.Append($"-metadata SUMMARY=\"{year}\" ");
+							}
+
+							continue;
+						}
+
+						if (m.Key == FFMPEGMetadataEnum.IMDBRating)
+						{
+							if (double.TryParse(m.Value, out double imdbRating))
+							{
+								// convert 10-based rating to a 5-based rated
+								double ratingBaseFive = Math.Floor(((imdbRating/10) * 5) * 10) / 10;
+								a.Append($"-metadata RATING=\"{ratingBaseFive}\" ");
+							}
+
+							continue;
+						}
+
+						a.Append($"-metadata {Enum.GetName(typeof(FFMPEGMetadataEnum), m.Key).ToUpper()}=\"{m.Value}\" ");
 					}
 				}
 
-				a.Append($"\"{temporaryFile}\"");
+				a.Append($"\"{_tempFile}\"");
 
+				_logger.LogDebug("Setting up events");
 				ffmpeg.Progress += (object sender, ConversionProgressEventArgs e) =>
 				{
-					_logger.LogInformation($"Processed duration: {e.ProcessedDuration}\tFPS:{e.Fps}\tBitrate: {e.Bitrate}\tSize: {e.SizeKb} kb\t{Path.GetFileName(_file)}");
+					_logger.LogInformation($"Processed duration: {e.ProcessedDuration}\tFPS:{e.Fps}\tBitrate: {e.Bitrate}\tSize: {e.SizeKb} kb\t{Path.GetFileName(CurrentFile)}");
 				};
 				
 				ffmpeg.Error += (object sender, ConversionErrorEventArgs e) => {
 					_logger.LogError($"Encoding error {e.Exception.Message}", e.Exception);
-					File.Delete(temporaryFile);
-					CleanTempData(transcodingJob);
-					onDoneInternal();
+					CleanTempData();
+					_onDoneInternal();
+					_transcodingJob.OnError();
 					_busy = false;
-					_file = null;
-					transcodingJob.OnError();
 				};
 				
 				ffmpeg.Complete += (object sender, ConversionCompleteEventArgs e) =>
 				{
-					if(!Directory.Exists(transcodingJob.DestinationFolder))
+					if(!Directory.Exists(_transcodingJob.DestinationFolder))
 					{
-						Directory.CreateDirectory(transcodingJob.DestinationFolder);
+						Directory.CreateDirectory(_transcodingJob.DestinationFolder);
 					}
 
-					File.Move(temporaryFile, destinationFile);
-					CleanTempData(transcodingJob);
-					_logger.LogWarning($"Encoding complete! {_file}");
-					onDoneInternal();
-					_busy = false;
-					_file = null;
-					transcodingJob.OnComplete();
+					File.Move(_tempFile, destinationFile);
+					_logger.LogWarning($"Encoding complete! {CurrentFile}");
+					CleanTempData();
+					_onDoneInternal();
+					_transcodingJob.OnComplete();
 					onSuccessInternal();
+					_busy = false;
 				};
 
 				_cancellationTokenSource.Token.Register(() => {
 					_logger.LogWarning("Encoding cancelled");
-					File.Delete(temporaryFile);
-					CleanTempData(transcodingJob);
-					onDoneInternal();
-					_file = null;
+					CleanTempData();
+					_onDoneInternal();
 					_busy = false;
 				});
 
+				_logger.LogDebug($"Adding a {_commandFile} command file for debugging.");
+				// Make an .sh file with the same command for eventual debugging
+				await File.WriteAllTextAsync(_commandFile, _configuration.FFMPEGBinary + " " + a.ToString());
+
+				_logger.LogDebug("Starting ffmpeg");
 				await ffmpeg.ExecuteAsync(a.ToString(), _cancellationTokenSource.Token);
+				TranscodingStarted = DateTime.Now;
+				onStart?.Invoke();
 			});
 		}
 
-		private static void CleanTempData(ITranscodingJob transcodingJob)
+		private void StallMonitor()
 		{
-			var coverImageFile = transcodingJob.Metadata
-				.Where(x => x.Key == FFMPEGMetadataEnum.cover)
-				.Select(x => x.Value)
-				.FirstOrDefault();
-
-			if (!string.IsNullOrWhiteSpace(coverImageFile))
+			// Watch the task
+			_ = Task.Run(() =>
 			{
-				File.Delete(coverImageFile);
+				while (true)
+				{
+					Thread.Sleep(stalledCheckInterval);
+					_logger.LogWarning("Encoder monitoring stall");
+					if (TranscodingStarted == null)
+					{
+						_logger.LogDebug("Transcoding not started");
+						continue;
+					}
+
+					if (_tempFile == null || !File.Exists(_tempFile))
+					{
+						_logger.LogError($"Encoder stalled: No temp file {_tempFile} seen since {stalledCheckInterval.TotalMinutes} minutes.");
+						CleanTempData(true);
+						try
+						{
+							_onDoneInternal.Invoke();
+						} catch(Exception ex)
+						{
+							_logger.LogError($"Error in {nameof(_onDoneInternal)}: {ex.Message}", ex);
+						}
+						try
+						{
+							_logger.LogDebug($"OnError is: {(_transcodingJob?.OnError == null ? "null" : _transcodingJob?.OnError?.GetType().Name) }");
+							_transcodingJob?.OnError?.Invoke();
+						}
+						catch (Exception ex)
+						{
+							_logger.LogError($"Error in {nameof(_transcodingJob.OnError)}: {ex.Message}", ex);
+						}
+						_busy = false;
+						continue;
+					}
+
+					long currentTempFileSize = new FileInfo(_tempFile).Length;
+
+					if (_lastTempFileSize != null && currentTempFileSize == _lastTempFileSize)
+					{
+						_logger.LogError($"Encoder stalled: No file increment in last ${stalledCheckInterval.TotalMinutes} minutes in {_tempFile}");
+						CleanTempData(true);
+						try
+						{
+							_onDoneInternal.Invoke();
+						}
+						catch (Exception ex)
+						{
+							_logger.LogError($"Error in {nameof(_onDoneInternal)}: {ex.Message}", ex);
+						}
+						try
+						{
+							_logger.LogDebug($"OnError is: {(_transcodingJob?.OnError == null ? "null" : _transcodingJob?.OnError?.GetType().Name) }");
+							_transcodingJob?.OnError?.Invoke();
+						}
+						catch (Exception ex)
+						{
+							_logger.LogError($"Error in {nameof(_transcodingJob.OnError)}: {ex.Message}", ex);
+						}
+					}
+
+					_logger.LogDebug($"Current Temp File Size = {currentTempFileSize}");
+					_lastTempFileSize = currentTempFileSize;
+				}
+			});
+		}
+
+		private void CleanTempData(bool keepCommand = false)
+		{
+			_logger.LogDebug($"Cleaning up the TEMP data{(keepCommand ? ", keeping the command file." : ".")}");
+			
+			if (!string.IsNullOrWhiteSpace(_coverImageFile))
+			{
+				File.Delete(_coverImageFile);
 			}
+
+			if (File.Exists(_tempFile))
+			{
+				File.Delete(_tempFile);
+			}
+
+			if (!keepCommand && File.Exists(_commandFile))
+			{ 
+				File.Delete(_commandFile);
+			}
+
+			CurrentFile = null;
+			_coverImageFile = null;
+			_tempFile = null;
+			TranscodingStarted = null;
+			_lastTempFileSize = null;
+			//_transcodingJob = null; // This kills the .OnError attached to transcoding job
 		}
 
 		public void Kill()
 		{
+			_logger.LogDebug("Killing the encoder");
 			_cancellationTokenSource.Cancel();
 		}
 	}

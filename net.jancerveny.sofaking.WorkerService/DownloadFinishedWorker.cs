@@ -79,23 +79,6 @@ namespace net.jancerveny.sofaking.WorkerService
 
 				try
 				{
-					await HandleLongRunningTranscoding();
-				} catch(Exception ex)
-				{
-					var st = new StackTrace(ex, true);
-					var frame0 = st.GetFrame(0);
-					var frame1 = st.GetFrame(1);
-					var frame2 = st.GetFrame(2);
-					var frame3 = st.GetFrame(3);
-					_logger.LogError($"Could not handle long running transcoding check. {ex.Message}", ex);
-					_logger.LogError($"{frame0.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame0.GetFileLineNumber()}");
-					_logger.LogError($"{frame1.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame1.GetFileLineNumber()}");
-					_logger.LogError($"{frame2.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame2.GetFileLineNumber()}");
-					_logger.LogError($"{frame3.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame3.GetFileLineNumber()}");
-				}
-
-				try
-				{
 					torrents = await _torrentClient.GetAllTorrents();
 
 					if (torrents.Count() == 0)
@@ -173,24 +156,7 @@ namespace net.jancerveny.sofaking.WorkerService
 					_logger.LogError($"{frame3.GetFileName()?.Split("\\")?.Last() ?? string.Empty} L{frame3.GetFileLineNumber()}");
 				}
 
-				await Task.Delay(10 * 1000, stoppingToken);
-			}
-		}
-
-		private async Task HandleLongRunningTranscoding()
-		{
-			var longRunningTranscoding = (await _movieService.GetMoviesAsync()).Where(x => x.Status == MovieStatusEnum.TranscodingStarted && x.TranscodingStarted != null && x.TranscodingStarted < DateTime.Now.AddHours(_configuration.TranscodingStaleAfterH * -1)).FirstOrDefault();
-			if (longRunningTranscoding != null)
-			{
-				_logger.LogWarning($"Transcoding of {longRunningTranscoding.TorrentName} has been going for {(DateTime.Now - longRunningTranscoding.TranscodingStarted.Value):hh\\:mm\\:ss}. Cancelling.");
-				try
-				{
-					_encoderService.Kill();
-				} catch(Exception ex)
-				{
-					_logger.LogError($"Problem killing the encoder: {ex.Message}", ex);
-				}
-				await _movieService.SetMovieStatus(longRunningTranscoding.Id, MovieStatusEnum.TranscodingRunningTooLong);
+				await Task.Delay(45 * 1000, stoppingToken);
 			}
 		}
 
@@ -198,7 +164,7 @@ namespace net.jancerveny.sofaking.WorkerService
 		{
 			if(_encoderService.CurrentFile != null)
 			{
-				_logger.LogInformation($"Transcoding running, skipping queued jobs.");
+				_logger.LogInformation($"Skipping queued jobs: Transcoding of {_encoderService.CurrentFile} running.");
 				return;
 			}
 
@@ -228,7 +194,7 @@ namespace net.jancerveny.sofaking.WorkerService
 
 			_logger.LogInformation($"Picking up {(queuedMovieJob.Status == MovieStatusEnum.TranscodingIncomplete ? "an incomplete" : "a queued")} job id {queuedMovieJob.Id}: {queuedMovieJob.TorrentName}");
 			var transcodingResult = await Transcode(queuedMovieJob.Id, torrent, cancellationToken);
-			if (transcodingResult.FilesToMove.Length > 0)
+			if (transcodingResult?.FilesToMove?.Length > 0)
 			{
 				await MoveVideoFiles(queuedMovieJob, torrent, transcodingResult.FilesToMove);
 			}
@@ -416,7 +382,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			{
 				if (!string.IsNullOrWhiteSpace(movie.ImageUrl))
 				{
-					await Download.GetFile(_clientFactory, movie.ImageUrl, Path.Combine(MovieFinishedDirectory(movie), "Cover.jpg"));
+					await Download.GetFile(movie.ImageUrl, Path.Combine(MovieFinishedDirectory(movie), "Cover.jpg"));
 				}
 			}
 			catch (Exception ex)
@@ -447,7 +413,6 @@ namespace net.jancerveny.sofaking.WorkerService
 			foreach (var videoFile in videoFiles)
 			{
 				_logger.LogInformation($"Analyzing {Path.GetFileName(videoFile)}");
-				string coverImageFile = null;
 				var mediaInfo = await _encoderService.GetMediaInfo(videoFile);
 				if(mediaInfo == null)
 				{
@@ -498,18 +463,6 @@ namespace net.jancerveny.sofaking.WorkerService
 					continue;
 				}
 
-				if (!string.IsNullOrWhiteSpace(movie.ImageUrl))
-				{
-					try
-					{
-						coverImageFile = Regexes.FileNamePattern.Match(videoFile).Groups[1].Value + ".jpg";
-						await Download.GetFile(_clientFactory, movie.ImageUrl, coverImageFile);
-					} catch(Exception _)
-					{
-						coverImageFile = null;
-					}
-				}
-
 				pendingTranscodingJobs.Add(new TranscodingJob
 				{
 					SourceFile = videoFile,
@@ -530,11 +483,12 @@ namespace net.jancerveny.sofaking.WorkerService
 					CancellationToken = cancellationToken,
 					Metadata = new Dictionary<FFMPEGMetadataEnum, string> {
 						{ FFMPEGMetadataEnum.title, movie.Title },
-						{ FFMPEGMetadataEnum.cover, coverImageFile },
+						{ FFMPEGMetadataEnum.cover, movie.ImageUrl },
 						{ FFMPEGMetadataEnum.year, movie.Year.ToString() },
-						{ FFMPEGMetadataEnum.author, movie.Director },
+						{ FFMPEGMetadataEnum.director, movie.Director },
 						{ FFMPEGMetadataEnum.description, movie.Description },
 						{ FFMPEGMetadataEnum.episode_id, movie.EpisodeId },
+						{ FFMPEGMetadataEnum.IMDBRating, movie.ImdbScore.ToString() },
 						{ FFMPEGMetadataEnum.genre, movie.Genres.ToString() },
 						{ FFMPEGMetadataEnum.show, movie.Show }
 					}
@@ -567,29 +521,42 @@ namespace net.jancerveny.sofaking.WorkerService
 			// Get the first job from the stack, then drop it
 			_ = Task.Run(async () =>
 			{
-				while (_transcodingJobs.Count() > 0 && _transcodingJobs.TryGetValue(_transcodingJobs.FirstOrDefault().Key, out var transcodingJob))
+				while (_transcodingJobs.Any() && _transcodingJobs.TryGetValue(_transcodingJobs.First().Key, out var transcodingJob))
 				{
-					if (transcodingJob.SourceFile == _encoderService.CurrentFile)
+					if (_encoderService.Busy || transcodingJob.SourceFile == _encoderService.CurrentFile)
 					{
 						continue;
 					}
 
 					try
 					{
-						_encoderService.StartTranscoding(transcodingJob, () =>
+						_encoderService.StartTranscoding(transcodingJob, null, () =>
 						{
-							_transcodingJobs.TryRemove(_transcodingJobs.First().Key, out _);
+							if(!_transcodingJobs.Any())
+							{
+								_logger.LogDebug("No transcoding jobs left to remove");
+								return;
+							}
+
+							var removed = _transcodingJobs.TryRemove(_transcodingJobs.First().Key, out _);
+							_logger.LogWarning($"Removing first from the queue, result: {removed}.");
 						}, async () =>
 						{
 							if (_transcodingJobs.Count == 0)
 							{
+								_logger.LogDebug("All transcoding done.");
 								await SuccessFinishingActionAsync(torrent, movie); // TODO: This could be getting wrong values because of threading
 							}
-						});
+						}, cancellationToken);
 					}
 					catch (Exception e)
 					{
-						_transcodingJobs.TryRemove(0, out _);
+						if (_transcodingJobs.Any())
+						{
+							var removed = _transcodingJobs.TryRemove(_transcodingJobs.First().Key, out _);
+							_logger.LogWarning($"Removing first from the queue, result: {removed}.");
+						}
+
 						await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingError);
 						_logger.LogError(e.Message);
 					}

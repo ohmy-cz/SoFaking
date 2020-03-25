@@ -10,7 +10,7 @@ namespace net.jancerveny.sofaking.BusinessLogic.Interfaces
 		string DestinationFolder { get; set; }
 		EncodingTargetFlags Action { get; set; }
 		Action OnComplete { get; set; }
-		Action OnError { get; set;  } 
+		Action OnError { get; set; } 
 		CancellationToken CancellationToken { get; set; }
 		Dictionary<FFMPEGMetadataEnum, string> Metadata { get; set; }
 	}
