@@ -382,7 +382,10 @@ namespace net.jancerveny.sofaking.WorkerService
 			{
 				if (!string.IsNullOrWhiteSpace(movie.ImageUrl))
 				{
-					await Download.GetFile(movie.ImageUrl, Path.Combine(MovieFinishedDirectory(movie), "Cover.jpg"));
+					var coverImage = Path.Combine(MovieFinishedDirectory(movie), "Cover.jpg");
+					await Download.GetFile(movie.ImageUrl, coverImage);
+					await WindowsFolder.SetFolderPictureAsync(coverImage);
+					File.SetAttributes(coverImage, File.GetAttributes(coverImage) | FileAttributes.Hidden);
 				}
 			}
 			catch (Exception ex)

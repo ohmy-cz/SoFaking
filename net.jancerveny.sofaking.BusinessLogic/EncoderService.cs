@@ -37,6 +37,11 @@ namespace net.jancerveny.sofaking.BusinessLogic
 		public DateTime? TranscodingStarted { get; private set; }
 		private const char optionalFlag = '?';
 		private static long? _lastTempFileSize;
+		/// <summary>
+		/// Constant Rate Factor (CRF)
+		/// @see https://trac.ffmpeg.org/wiki/Encode/H.264
+		/// </summary>
+		private const int _crf = 16;
 		private static readonly TimeSpan stalledCheckInterval = new TimeSpan(0, 5, 0);
 		private Action _onDoneInternal;
 
@@ -114,8 +119,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				a.Append("-map_metadata 0 ");
 
 				// Video
-				a.Append($"-map 0:v -c:v {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? _configuration.OutputVideoCodec + $" -b:v {_configuration.OutputVideoBitrateMbits}M -vf scale=1080:-2" : "copy")} ");
-				a.Append("-preset veryslow -crf 18 ");
+				a.Append($"-map 0:v -c:v {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? _configuration.OutputVideoCodec + $" -vf scale=1080:-2 -preset veryslow -crf {_crf} " : "copy")} "); // -b:v {_configuration.OutputVideoBitrateMbits}M gets ignored when CRF is used
 				a.Append($"-tune {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.VideoIsAnimation) ? "animation" : "film")} ");
 
 				// Audio
@@ -154,7 +158,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				// See: https://matroska.org/technical/specs/tagging/index.html
 				a.Append("-metadata ENCODER=\"SoFaking\" ");
 				a.Append($"-metadata COMMENT=\"Original file name: {Path.GetFileName(CurrentFile)}\" ");
-				a.Append($"-metadata ENCODER_SETTINGS=\"V: {_configuration.OutputVideoCodec}@{_configuration.OutputVideoBitrateMbits}, A:{_configuration.OutputAudioCodec}@{_configuration.OutputAudioBitrateMbits}\" ");
+				a.Append($"-metadata ENCODER_SETTINGS=\"V: {_configuration.OutputVideoCodec} -CRF {_crf}, A:{_configuration.OutputAudioCodec}@{_configuration.OutputAudioBitrateMbits}M\" ");
 				if (_transcodingJob.Metadata != null && _transcodingJob.Metadata.Count > 0)
 				{
 					foreach (var m in _transcodingJob.Metadata)
@@ -223,7 +227,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				_logger.LogDebug("Setting up events");
 				ffmpeg.Progress += (object sender, ConversionProgressEventArgs e) =>
 				{
-					_logger.LogInformation($"Processed duration: {e.ProcessedDuration}\tFPS:{e.Fps}\tBitrate: {e.Bitrate}\tSize: {e.SizeKb} kb\t{Path.GetFileName(CurrentFile)}");
+					_logger.LogInformation($"Progress: {Math.Floor(e.ProcessedDuration / e.TotalDuration)}%\tProcessed duration: {e.ProcessedDuration}\tFPS:{e.Fps}\tSize: {e.SizeKb} kb\t{Path.GetFileName(CurrentFile)}");
 				};
 				
 				ffmpeg.Error += (object sender, ConversionErrorEventArgs e) => {
