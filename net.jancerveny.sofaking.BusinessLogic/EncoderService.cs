@@ -45,18 +45,28 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 		public EncoderService(ILogger<EncoderService> logger, EncoderConfiguration configuration, SoFakingConfiguration sofakingConfiguration)
 		{
-			_cancellationTokenSource = new CancellationTokenSource();
 			_logger = logger;
 			_configuration = configuration;
 			_sofakingConfiguration = sofakingConfiguration;
 
+			SetCancellationToken();
+			StallMonitor();
+		}
+
+		/// <summary>
+		/// Reset cancellation token source, which is originally only intended to be used once
+		/// </summary>
+		private void SetCancellationToken()
+		{
+			_cancellationTokenSource = new CancellationTokenSource();
 			_cancellationTokenSource.Token.Register(() => {
 				CleanTempData(true);
 
-				if(_onDoneInternal == null)
+				if (_onDoneInternal == null)
 				{
 					_logger.LogWarning($"No {nameof(_onDoneInternal)} callback set!");
-				} else
+				}
+				else
 				{
 					_onDoneInternal.Invoke();
 				}
@@ -64,16 +74,17 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				if (_transcodingJob?.OnError == null)
 				{
 					_logger.LogWarning($"No {nameof(_transcodingJob.OnError)} callback set!");
-				} else
+				}
+				else
 				{
 					_transcodingJob.OnError.Invoke();
 				}
 
 				_busy = false;
 				_logger.LogInformation("Encoding cancelled");
+				_cancellationTokenSource = new CancellationTokenSource();
+				_cancellationTokenSource.Token.Register(() => SetCancellationToken());
 			});
-
-			StallMonitor();
 		}
 
 		public async Task<IMediaInfo> GetMediaInfo(string filePath)
