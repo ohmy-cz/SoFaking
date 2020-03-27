@@ -40,7 +40,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 		/// @see https://trac.ffmpeg.org/wiki/Encode/H.264
 		/// </summary>
 		private const int _crf = 16;
-		private static readonly TimeSpan stalledCheckInterval = new TimeSpan(0, 1, 0);
+		private static readonly TimeSpan stalledCheckInterval = new TimeSpan(0, 5, 0);
 		private Action _onDoneInternal;
 
 		public EncoderService(ILogger<EncoderService> logger, EncoderConfiguration configuration, SoFakingConfiguration sofakingConfiguration)
@@ -105,7 +105,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			};
 		}
 
-		public void StartTranscoding(ITranscodingJob transcodingJob, Action onStart, Action onDoneInternal, Action onSuccessInternal, CancellationToken cancellationToken = default)
+		public async Task StartTranscodingAsync(ITranscodingJob transcodingJob, Action onStart, Action onDoneInternal, Action onSuccessInternal, CancellationToken cancellationToken = default)
 		{
 			if (!File.Exists(transcodingJob.SourceFile))
 			{
@@ -128,8 +128,6 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			});
 
 			CurrentFile = _transcodingJob.SourceFile;
-			Task.Run(async () =>
-			{
 				if (_transcodingJob.Action == EncodingTargetFlags.None)
 				{
 					throw new Exception("No transcoding action selected");
@@ -293,7 +291,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				_logger.LogDebug("Starting ffmpeg");
 				try
 				{
-					await ffmpeg.ExecuteAsync(a.ToString(), _cancellationTokenSource.Token);
+					_ = ffmpeg.ExecuteAsync(a.ToString(), _cancellationTokenSource.Token);
 				} catch(Exception ex)
 				{
 					_logger.LogError($"Starting FFMPEG failed! {ex.Message}", ex);
@@ -301,9 +299,9 @@ namespace net.jancerveny.sofaking.BusinessLogic
 					return;
 				}
 				TranscodingStarted = DateTime.Now;
+				_logger.LogDebug("Ffmpeg started");
 				_stalledFileCandidate = null;
-				onStart?.Invoke();
-			});
+			onStart?.Invoke();
 		}
 
 		private void StallMonitor()
@@ -334,9 +332,9 @@ namespace net.jancerveny.sofaking.BusinessLogic
 						_stalledFileCandidate = CurrentFile;
 					}
 
-					if (_tempFile == null || !File.Exists(_tempFile))
+					if (TranscodingStarted != null && TranscodingStarted.Value < DateTime.Now.AddMinutes(-5) && _tempFile == null || !File.Exists(_tempFile))
 					{
-						_logger.LogError($"Encoder stalled: No temp file {_tempFile} seen since {stalledCheckInterval.TotalMinutes} minutes.");
+						_logger.LogError($"Encoder stalled: No temp file {_tempFile} seen since five minutes ago.");
 						Kill();
 						continue;
 					}

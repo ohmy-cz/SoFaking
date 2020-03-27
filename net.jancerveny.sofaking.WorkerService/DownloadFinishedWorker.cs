@@ -533,22 +533,22 @@ namespace net.jancerveny.sofaking.WorkerService
 
 					try
 					{
-						_encoderService.StartTranscoding(transcodingJob, null, () =>
-						{
-							if(!_transcodingJobs.Any())
+						await _encoderService.StartTranscodingAsync(transcodingJob, null, () =>
 							{
-								_logger.LogDebug("No transcoding jobs left to remove");
-								return;
-							}
+								if (!_transcodingJobs.Any())
+								{
+									_logger.LogDebug("No transcoding jobs left to remove");
+									return;
+								}
 
-							var removed = _transcodingJobs.TryRemove(_transcodingJobs.First().Key, out _);
-							_logger.LogWarning($"Removing first from the queue, result: {removed}.");
-						}, async () =>
-						{
-							if (_transcodingJobs.Count == 0)
+								var removed = _transcodingJobs.TryRemove(_transcodingJobs.First().Key, out _);
+								_logger.LogWarning($"Removing first from the queue, result: {removed}.");
+							}, async () =>
 							{
-								_logger.LogDebug("All transcoding done.");
-								await SuccessFinishingActionAsync(torrent, movie); // TODO: This could be getting wrong values because of threading
+								if (_transcodingJobs.Count == 0)
+								{
+									_logger.LogDebug("All transcoding done.");
+									await SuccessFinishingActionAsync(torrent, movie); // TODO: This could be getting wrong values because of threading
 							}
 						}, cancellationToken);
 					}

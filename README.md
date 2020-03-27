@@ -14,6 +14,7 @@ SoFaking is a spiritual following to [CouchPotato](https://couchpota.to/), Radar
 2. A list of IMDB results appears, including release year, IMDB rating and MetaCritic rating so you can choose the best match,
 3. After choosing the concrete movie/series, crawl internal list of torrent sources, find the best file quality match (highest resolution and size), and torrent gets added to Transmission
 4. When the download finishes, transcode the downloaded movie to your target specification, while keeping all of the original soundtracks as secondary tracks (use case: Play the movies on PS4 or other device without audio decoder, and then choose the originl audio when you play it on a device that supports it). Also, add a Cover image and clean metadata from IMDB, and put the outputs in a clean-named folder (by movie title from IMDB)
+5. The final output is a collection of folders with only movie files in them; no rubbish readme files, sample files, or possibly harmful programs. This is _not_ supposed to be a media center software, but it can fill yours - or you can install MiniDLNA and have it share these folders.
 
 ### Movie watchdog
 When you add a movie found on IMDB which wasn't released yet, SoFaking will look for it. There will be a service running periodically, scrapping given list of sources for a matching minimum quality torrent (ie skipping a HDCAM release). When found at a point in the future, the movie will be automatically downloaded and you will get notified through an SMS.
