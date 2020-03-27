@@ -1,5 +1,4 @@
 ﻿using FFmpeg.NET;
-using FFmpeg.NET.Enums;
 using FFmpeg.NET.Events;
 using Microsoft.Extensions.Logging;
 using net.jancerveny.sofaking.BusinessLogic.Exceptions;
@@ -9,8 +8,6 @@ using net.jancerveny.sofaking.Common.Models;
 using net.jancerveny.sofaking.Common.Utils;
 using System;
 using System.IO;
-using System.Linq;
-using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -35,6 +32,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 		public string CurrentFile { get; private set; }
 		public bool Busy { get { return _busy; } }
 		public DateTime? TranscodingStarted { get; private set; }
+		public string _stalledFileCandidate;
 		private const char optionalFlag = '?';
 		private static long? _lastTempFileSize;
 		/// <summary>
@@ -42,7 +40,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 		/// @see https://trac.ffmpeg.org/wiki/Encode/H.264
 		/// </summary>
 		private const int _crf = 16;
-		private static readonly TimeSpan stalledCheckInterval = new TimeSpan(0, 5, 0);
+		private static readonly TimeSpan stalledCheckInterval = new TimeSpan(0, 1, 0);
 		private Action _onDoneInternal;
 
 		public EncoderService(ILogger<EncoderService> logger, EncoderConfiguration configuration, SoFakingConfiguration sofakingConfiguration)
@@ -51,6 +49,30 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			_logger = logger;
 			_configuration = configuration;
 			_sofakingConfiguration = sofakingConfiguration;
+
+			_cancellationTokenSource.Token.Register(() => {
+				CleanTempData(true);
+
+				if(_onDoneInternal == null)
+				{
+					_logger.LogWarning($"No {nameof(_onDoneInternal)} callback set!");
+				} else
+				{
+					_onDoneInternal.Invoke();
+				}
+
+				if (_transcodingJob?.OnError == null)
+				{
+					_logger.LogWarning($"No {nameof(_transcodingJob.OnError)} callback set!");
+				} else
+				{
+					_transcodingJob.OnError.Invoke();
+				}
+
+				_busy = false;
+				_logger.LogInformation("Encoding cancelled");
+			});
+
 			StallMonitor();
 		}
 
@@ -62,11 +84,12 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 			int? bitrateKbs = metaData.Duration.TotalSeconds == 0 ? null : (int?)(Math.Ceiling((metaData.FileInfo.Length * 8) / 1024d) / metaData.Duration.TotalSeconds);
 
-			return new MediaInfo { 
+			return new MediaInfo {
 				VideoCodec = metaData?.VideoData?.Format,
 				VideoResolution = metaData?.VideoData?.FrameSize,
 				BitrateKbs = bitrateKbs,
 				FileInfo = metaData?.FileInfo,
+				Duration = metaData.Duration,
 				AudioCodec = metaData?.AudioData?.Format // I assume this takes the default audio stream...
 			};
 		}
@@ -90,7 +113,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 			cancellationToken.Register(() => {
 				_logger.LogDebug("Encoder cancelled from the outside");
-				this.Kill();
+				Kill();
 			});
 
 			CurrentFile = _transcodingJob.SourceFile;
@@ -227,15 +250,13 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				_logger.LogDebug("Setting up events");
 				ffmpeg.Progress += (object sender, ConversionProgressEventArgs e) =>
 				{
-					_logger.LogInformation($"Progress: {Math.Floor(e.ProcessedDuration / e.TotalDuration)}%\tProcessed duration: {e.ProcessedDuration}\tFPS:{e.Fps}\tSize: {e.SizeKb} kb\t{Path.GetFileName(CurrentFile)}");
+					//_logger.LogDebug((e.ProcessedDuration.Ticks / transcodingJob.Duration.Ticks).ToString("0.#"));
+					_logger.LogInformation($"Progress: {(transcodingJob.Duration.Ticks == 0 ? "N/A" : $"{(((double)e.ProcessedDuration.Ticks / (double)transcodingJob.Duration.Ticks) * 100d):0.#}%")}\tProcessed duration: {e.ProcessedDuration}\tFPS:{e.Fps}\tSize: {e.SizeKb} kb\t{Path.GetFileName(CurrentFile)}");
 				};
 				
 				ffmpeg.Error += (object sender, ConversionErrorEventArgs e) => {
 					_logger.LogError($"Encoding error {e.Exception.Message}", e.Exception);
-					CleanTempData();
-					_onDoneInternal();
-					_transcodingJob.OnError();
-					_busy = false;
+					Kill();
 				};
 				
 				ffmpeg.Complete += (object sender, ConversionCompleteEventArgs e) =>
@@ -254,20 +275,22 @@ namespace net.jancerveny.sofaking.BusinessLogic
 					_busy = false;
 				};
 
-				_cancellationTokenSource.Token.Register(() => {
-					_logger.LogWarning("Encoding cancelled");
-					CleanTempData();
-					_onDoneInternal();
-					_busy = false;
-				});
-
 				_logger.LogDebug($"Adding a {_commandFile} command file for debugging.");
 				// Make an .sh file with the same command for eventual debugging
 				await File.WriteAllTextAsync(_commandFile, _configuration.FFMPEGBinary + " " + a.ToString());
 
 				_logger.LogDebug("Starting ffmpeg");
-				await ffmpeg.ExecuteAsync(a.ToString(), _cancellationTokenSource.Token);
+				try
+				{
+					await ffmpeg.ExecuteAsync(a.ToString(), _cancellationTokenSource.Token);
+				} catch(Exception ex)
+				{
+					_logger.LogError($"Starting FFMPEG failed! {ex.Message}", ex);
+					Kill();
+					return;
+				}
 				TranscodingStarted = DateTime.Now;
+				_stalledFileCandidate = null;
 				onStart?.Invoke();
 			});
 		}
@@ -281,33 +304,29 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				{
 					Thread.Sleep(stalledCheckInterval);
 					_logger.LogWarning("Encoder monitoring stall");
-					if (TranscodingStarted == null)
+					if (!Busy)
 					{
 						_logger.LogDebug("Transcoding not started");
 						continue;
 					}
 
+					if (TranscodingStarted == null && CurrentFile != null)
+					{
+						if (_stalledFileCandidate == CurrentFile)
+						{
+							_logger.LogError($"Encoder stalled: {nameof(TranscodingStarted)} null (transcoding not started) even though {nameof(CurrentFile)} is set.");
+							Kill();
+							continue;
+						}
+
+						_logger.LogDebug($"Stalled candidate: {CurrentFile}");
+						_stalledFileCandidate = CurrentFile;
+					}
+
 					if (_tempFile == null || !File.Exists(_tempFile))
 					{
 						_logger.LogError($"Encoder stalled: No temp file {_tempFile} seen since {stalledCheckInterval.TotalMinutes} minutes.");
-						CleanTempData(true);
-						try
-						{
-							_onDoneInternal.Invoke();
-						} catch(Exception ex)
-						{
-							_logger.LogError($"Error in {nameof(_onDoneInternal)}: {ex.Message}", ex);
-						}
-						try
-						{
-							_logger.LogDebug($"OnError is: {(_transcodingJob?.OnError == null ? "null" : _transcodingJob?.OnError?.GetType().Name) }");
-							_transcodingJob?.OnError?.Invoke();
-						}
-						catch (Exception ex)
-						{
-							_logger.LogError($"Error in {nameof(_transcodingJob.OnError)}: {ex.Message}", ex);
-						}
-						_busy = false;
+						Kill();
 						continue;
 					}
 
@@ -316,24 +335,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 					if (_lastTempFileSize != null && currentTempFileSize == _lastTempFileSize)
 					{
 						_logger.LogError($"Encoder stalled: No file increment in last ${stalledCheckInterval.TotalMinutes} minutes in {_tempFile}");
-						CleanTempData(true);
-						try
-						{
-							_onDoneInternal.Invoke();
-						}
-						catch (Exception ex)
-						{
-							_logger.LogError($"Error in {nameof(_onDoneInternal)}: {ex.Message}", ex);
-						}
-						try
-						{
-							_logger.LogDebug($"OnError is: {(_transcodingJob?.OnError == null ? "null" : _transcodingJob?.OnError?.GetType().Name) }");
-							_transcodingJob?.OnError?.Invoke();
-						}
-						catch (Exception ex)
-						{
-							_logger.LogError($"Error in {nameof(_transcodingJob.OnError)}: {ex.Message}", ex);
-						}
+						Kill();
 					}
 
 					_logger.LogDebug($"Current Temp File Size = {currentTempFileSize}");
@@ -366,12 +368,13 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			_tempFile = null;
 			TranscodingStarted = null;
 			_lastTempFileSize = null;
+			_stalledFileCandidate = null;
 			//_transcodingJob = null; // This kills the .OnError attached to transcoding job
 		}
 
 		public void Kill()
 		{
-			_logger.LogDebug("Killing the encoder");
+			_logger.LogWarning("Killing the encoder");
 			_cancellationTokenSource.Cancel();
 		}
 	}

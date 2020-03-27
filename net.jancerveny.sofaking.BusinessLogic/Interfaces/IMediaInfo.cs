@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 
 namespace net.jancerveny.sofaking.BusinessLogic.Interfaces
 {
@@ -9,5 +10,6 @@ namespace net.jancerveny.sofaking.BusinessLogic.Interfaces
 		int? BitrateKbs { get; set; }
 		public FileInfo FileInfo { get; set; }
 		string AudioCodec { get; set; }
+		TimeSpan Duration { get; set; }
 	}
 }

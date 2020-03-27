@@ -17,14 +17,15 @@ namespace net.jancerveny.sofaking.Common.Utils
 		{
 			if (!File.Exists(imageFileName)) throw new ArgumentException("Image does not exist." + nameof(imageFileName));
 
-			var desktopIniFile = Path.Combine(Path.GetFullPath(imageFileName), "desktop.ini");
+			var fi = new FileInfo(imageFileName);
+			var desktopIniFile = Path.Combine(fi.DirectoryName, "desktop.ini");
 
 			var c = new StringBuilder();
 			c.AppendLine("[ViewState]");
 			c.AppendLine("Mode=");
 			c.AppendLine("Vid=");
 			c.AppendLine("FolderType=Videos");
-			c.AppendLine($"Logo={imageFileName}");
+			c.AppendLine($"Logo={fi.Name}");
 
 			await File.WriteAllTextAsync(desktopIniFile, c.ToString());
 			File.SetAttributes(desktopIniFile, File.GetAttributes(desktopIniFile) | FileAttributes.Hidden | FileAttributes.System);

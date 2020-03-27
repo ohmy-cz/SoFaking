@@ -14,5 +14,6 @@ namespace net.jancerveny.sofaking.BusinessLogic.Models
 		public Action OnError { get; set; }
 		public CancellationToken CancellationToken { get; set; }
 		public Dictionary<FFMPEGMetadataEnum, string> Metadata { get; set; }
+		public TimeSpan Duration { get; set; }
 	}
 }

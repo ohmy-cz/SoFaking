@@ -249,7 +249,7 @@ namespace net.jancerveny.sofaking.WorkerService
 					if (!Directory.Exists(downloadDirectory) && !File.Exists(downloadFile))
 					{
 						await _movieService.SetMovieStatus(movieJob.Id, MovieStatusEnum.FileNotFound);
-						_logger.LogDebug($"Would delete torrent: {torrent.Id}");
+						_logger.LogDebug($"Will delete torrent: {torrent.Id}");
 #if RELEASE
 						await _torrentClient.RemoveTorrent(torrent.Id);
 #endif
@@ -272,7 +272,7 @@ namespace net.jancerveny.sofaking.WorkerService
 
 				if(transcodingResult.Result == TranscodeResultEnum.NoVideoFiles)
 				{
-					_logger.LogDebug($"Would delete: {downloadDirectory}");
+					_logger.LogDebug($"Will delete: {downloadDirectory}");
 #if RELEASE
 					Directory.Delete(downloadDirectory, true);
 					await _torrentClient.RemoveTorrent(torrent.Id);
@@ -317,7 +317,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			catch (Exception e)
 			{
 				await _movieService.SetMovieStatus(movie.Id, MovieStatusEnum.FileInUse);
-				_logger.LogDebug($"Would delete torrent: {torrent.Id}");
+				_logger.LogDebug($"Will delete torrent: {torrent.Id}");
 #if RELEASE
 				await _torrentClient.RemoveTorrent(torrent.Id);
 #endif
@@ -378,19 +378,18 @@ namespace net.jancerveny.sofaking.WorkerService
 
 		private async Task AddCoverImage(Movie movie)
 		{
+			if (string.IsNullOrWhiteSpace(movie.ImageUrl)) throw new ArgumentNullException(nameof(movie.ImageUrl));
+			
 			try
 			{
-				if (!string.IsNullOrWhiteSpace(movie.ImageUrl))
-				{
 					var coverImage = Path.Combine(MovieFinishedDirectory(movie), "Cover.jpg");
 					await Download.GetFile(movie.ImageUrl, coverImage);
 					await WindowsFolder.SetFolderPictureAsync(coverImage);
 					File.SetAttributes(coverImage, File.GetAttributes(coverImage) | FileAttributes.Hidden);
-				}
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError("Could not create a Cover image.", ex);
+				_logger.LogError($"Could not create a Cover image. {ex.Message}", ex);
 			}
 		}
 
@@ -471,9 +470,10 @@ namespace net.jancerveny.sofaking.WorkerService
 					SourceFile = videoFile,
 					DestinationFolder = MovieFinishedDirectory(movie),
 					Action = flags,
+					Duration = mediaInfo.Duration,
 					OnComplete = () =>
 					{
-						_logger.LogDebug($"Would delete: {videoFile}");
+						_logger.LogDebug($"Will delete: {videoFile}");
 #if RELEASE
 						File.Delete(videoFile);
 #endif
@@ -588,7 +588,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			await AddCoverImage(movie);
 			try
 			{
-				_logger.LogDebug($"Would delete: {MovieDownloadDirectory(torrent)}");
+				_logger.LogDebug($"Will delete: {MovieDownloadDirectory(torrent)}");
 #if RELEASE
 				Directory.Delete(MovieDownloadDirectory(torrent), true);
 #endif
@@ -596,7 +596,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			{
 				await _movieService.SetMovieStatus(movie.Id, MovieStatusEnum.CouldNotDeleteDownloadDirectory);
 			}
-			_logger.LogDebug($"Would remove torrent: {torrent.Id}");
+			_logger.LogDebug($"Will remove torrent: {torrent.Id}");
 #if RELEASE
 			await _torrentClient.RemoveTorrent(torrent.Id);
 #endif

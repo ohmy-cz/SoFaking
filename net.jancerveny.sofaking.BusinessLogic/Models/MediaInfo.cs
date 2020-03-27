@@ -1,4 +1,5 @@
 ﻿using net.jancerveny.sofaking.BusinessLogic.Interfaces;
+using System;
 using System.IO;
 
 namespace net.jancerveny.sofaking.BusinessLogic.Models
@@ -10,5 +11,6 @@ namespace net.jancerveny.sofaking.BusinessLogic.Models
 		public int? BitrateKbs { get; set; }
 		public FileInfo FileInfo { get; set; }
 		public string AudioCodec { get; set; }
+		public TimeSpan Duration { get; set; }
 	}
 }
