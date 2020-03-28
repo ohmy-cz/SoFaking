@@ -151,7 +151,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				a.Append("-map_metadata 0 ");
 
 				// Video
-				a.Append($"-map 0:v -c:v {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? _configuration.OutputVideoCodec + $" -vf scale=1080:-2 -preset veryslow -crf {_crf} " : "copy")} "); // -b:v {_configuration.OutputVideoBitrateMbits}M gets ignored when CRF is used
+				a.Append($"-map 0:v -c:v {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? _configuration.OutputVideoCodec + $" -vf scale=1080:-2 -preset veryslow -crf {_crf} -b:v {_configuration.OutputVideoBitrateMbits}M " : "copy")} "); // bitrate video gets ignored when CRF is used
 				a.Append($"-tune {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.VideoIsAnimation) ? "animation" : "film")} ");
 
 				// Audio
@@ -260,7 +260,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				ffmpeg.Progress += (object sender, ConversionProgressEventArgs e) =>
 				{
 					//_logger.LogDebug((e.ProcessedDuration.Ticks / transcodingJob.Duration.Ticks).ToString("0.#"));
-					_logger.LogInformation($"Progress: {(transcodingJob.Duration.Ticks == 0 ? "N/A" : $"{(((double)e.ProcessedDuration.Ticks / (double)transcodingJob.Duration.Ticks) * 100d):0.#}%")}\tProcessed duration: {e.ProcessedDuration}\tFPS:{e.Fps}\tSize: {e.SizeKb} kb\t{Path.GetFileName(CurrentFile)}");
+					_logger.LogDebug($"Progress: {(transcodingJob.Duration.Ticks == 0 ? "N/A" : $"{(((double)e.ProcessedDuration.Ticks / (double)transcodingJob.Duration.Ticks) * 100d):0.#}%")}\tProcessed duration: {e.ProcessedDuration}\tFPS:{e.Fps}\tSize: {e.SizeKb} kb\t{Path.GetFileName(CurrentFile)}");
 				};
 				
 				ffmpeg.Error += (object sender, ConversionErrorEventArgs e) => {

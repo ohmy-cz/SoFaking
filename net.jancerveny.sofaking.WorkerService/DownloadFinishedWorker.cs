@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using net.jancerveny.sofaking.BusinessLogic;
 using net.jancerveny.sofaking.BusinessLogic.Interfaces;
 using net.jancerveny.sofaking.BusinessLogic.Models;
+using net.jancerveny.sofaking.Common.Constants;
 using net.jancerveny.sofaking.Common.Utils;
 using net.jancerveny.sofaking.DataLayer.Models;
 using net.jancerveny.sofaking.WorkerService.Models;
@@ -461,10 +462,12 @@ namespace net.jancerveny.sofaking.WorkerService
 
 				if(flags == EncodingTargetFlags.None)
 				{
+					_logger.LogDebug($"Video file {videoFile} doesn't need transcoding, adding to files to move.");
 					filesToMove.Add(videoFile);
 					continue;
 				}
 
+				_logger.LogDebug($"Adding {videoFile} to transcoding jobs.");
 				pendingTranscodingJobs.Add(new TranscodingJob
 				{
 					SourceFile = videoFile,
@@ -502,6 +505,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			// Using this pendingTranscodingJobsList allows us to return for movies that need no transcoding, so they won't wait for the transcoding to be complete and can be simply copied  over to the resulting folder.
 			if (!pendingTranscodingJobs.Any())
 			{
+				_logger.LogDebug($"Transcoding not needed, no pending jobs.");
 				return new TranscodeResult(TranscodeResultEnum.TranscodingNotNeeded, filesToMove.ToArray());
 			}
 
@@ -510,15 +514,36 @@ namespace net.jancerveny.sofaking.WorkerService
 			var tjdb = (await _movieService.GetMoviesAsync()).Where(x => x.Status == MovieStatusEnum.TranscodingStarted).Any();
 			if (tjmem || tjdb)
 			{
+				_logger.LogDebug($"Queuing {movie.TorrentName}");
 				await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingQueued);
 				return new TranscodeResult(TranscodeResultEnum.Queued, filesToMove.ToArray());
 			}
 
 			// Start transcoding by copying our pending tasks into the static global queue
+			_logger.LogDebug($"Setting movie status to TranscodingStarted.");
 			await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingStarted);
 			foreach(var transcodingJob in pendingTranscodingJobs)
 			{
-				_transcodingJobs.TryAdd(_transcodingJobs.IsEmpty ? 0 : _transcodingJobs.Last().Key + 1, transcodingJob);
+				int attempts = 0;
+				bool success = false;
+				while(attempts <= 10)
+				{
+					var id = _transcodingJobs.IsEmpty ? 0 : _transcodingJobs.Select(x => x.Key).Max() + 1;
+					_logger.LogDebug($"Trying to add transconding job {id} to the global queue");
+					if (_transcodingJobs.TryAdd(id, transcodingJob))
+					{
+						success = true;
+						break;
+					}
+
+					attempts++;
+					Thread.Sleep(TimeSpan.FromSeconds(3));
+				}
+
+				if(!success)
+				{
+					_logger.LogError($"Couldn't add transcoding job {transcodingJob.SourceFile} to the global queue.");
+				}
 			}
 
 			// Get the first job from the stack, then drop it
@@ -533,6 +558,7 @@ namespace net.jancerveny.sofaking.WorkerService
 
 					try
 					{
+						_logger.LogDebug($"Trying to start: {transcodingJob.SourceFile}");
 						await _encoderService.StartTranscodingAsync(transcodingJob, null, () =>
 							{
 								if (!_transcodingJobs.Any())
@@ -578,7 +604,7 @@ namespace net.jancerveny.sofaking.WorkerService
 
 			return Directory
 				.GetFiles(sourcePath)
-				.Where(x => Regexes.VideoFileTypes.IsMatch(x) && !x.ToLower().Contains("sample"))
+				.Where(x => Regexes.VideoFileTypes.IsMatch(x) && !BannedVideoFiles.Tokens.Contains(x.ToLower()))
 				.OrderByDescending(x => new FileInfo(x).Length)
 				.ToArray();
 		}

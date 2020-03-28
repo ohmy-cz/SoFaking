@@ -6,8 +6,10 @@ namespace net.jancerveny.sofaking.Common.Constants
 {
     public static class TorrentScoring
     {
-        public static int BannedTag = -1000;
-        public static Dictionary<string, int> Tags = new Dictionary<string, int>
+        public const int FileSizeGbMin = 4;
+        public const int FileSizeGbMax = 30;
+        public const int BannedTag = -1000;
+        public static readonly Dictionary<string, int> Tags = new Dictionary<string, int>
         {
             // Positive tags will result in higher score
             { "1080p", 110 },
@@ -97,7 +99,5 @@ namespace net.jancerveny.sofaking.Common.Constants
             { "10bit", BannedTag }, // My screen doesn't support this format, skipping
             { "Porn parody", BannedTag } // ¯\_(ツ)_/¯
         };
-        public static int FileSizeGbMin = 4;
-        public static int FileSizeGbMax = 30;
     }
 }
