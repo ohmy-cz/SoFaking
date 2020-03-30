@@ -39,7 +39,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 		/// Constant Rate Factor (CRF)
 		/// @see https://trac.ffmpeg.org/wiki/Encode/H.264
 		/// </summary>
-		private const int _crf = 16;
+		private const int _crf = 17;
 		private static readonly TimeSpan stalledCheckInterval = new TimeSpan(0, 5, 0);
 		private Action _onDoneInternal;
 
@@ -151,7 +151,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				a.Append("-map_metadata 0 ");
 
 				// Video
-				a.Append($"-map 0:v -c:v {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? _configuration.OutputVideoCodec + $" -vf scale=1080:-2 -preset veryslow -crf {_crf} -b:v {_configuration.OutputVideoBitrateMbits}M " : "copy")} "); // bitrate video gets ignored when CRF is used
+				a.Append($"-map 0:v -c:v {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? _configuration.OutputVideoCodec + $" {(_transcodingJob.SourceFile.Contains("2610p") || _transcodingJob.SourceFile.Contains("4K") ? "-vf scale=1080:-2 " : string.Empty)}-preset veryslow -b:v {_configuration.OutputVideoBitrateMbits}M -crf {_crf}" : "copy")} ");
 				a.Append($"-tune {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.VideoIsAnimation) ? "animation" : "film")} ");
 
 				// Audio
