@@ -107,39 +107,7 @@ namespace net.jancerveny.sofaking.client.console
                             var movieJob = movieJobs.Where(x => x.ImdbId == vm.Id).FirstOrDefault();
                             if (movieJob != null)
                             {
-                                switch (movieJob.Status)
-                                {
-                                    case MovieStatusEnum.Downloaded:
-                                        Console.ForegroundColor = ConsoleColor.DarkGreen;
-                                        status = "Dlded";
-                                        break;
-                                    case MovieStatusEnum.Downloading:
-                                        Console.ForegroundColor = ConsoleColor.Yellow;
-                                        status = "Dlding";
-                                        break;
-                                    case MovieStatusEnum.Finished:
-                                        Console.ForegroundColor = ConsoleColor.Green;
-                                        status = "Fnishd";
-                                        break;
-                                    case MovieStatusEnum.DownloadQueued:
-                                        Console.ForegroundColor = ConsoleColor.DarkYellow;
-                                        status = "Queued";
-                                        break;
-                                    case MovieStatusEnum.TranscodingStarted:
-                                        Console.ForegroundColor = ConsoleColor.Magenta;
-                                        status = "Transc";
-                                        break;
-                                    case MovieStatusEnum.WatchingFor:
-                                        Console.ForegroundColor = ConsoleColor.Cyan;
-                                        status = "Wtchng";
-                                        break;
-                                }
-
-                                if (movieJob.Deleted != null)
-                                {
-                                    Console.ForegroundColor = ConsoleColor.Cyan;
-                                    status = "\u2713";
-                                }
+                                status = SetMovieConsoleStatus(movieJob);
                             }
 
                             Console.WriteLine($"[{(i+1)}]\t{vm.Score}/10\t{vm.ScoreMetacritic} Metacritic\t{status}\t{vm.Title} ({vm.ReleaseYear})");
@@ -215,42 +183,10 @@ namespace net.jancerveny.sofaking.client.console
                         var movieJob = movieJobs.Where(x => x.TorrentName == t.Name).FirstOrDefault();
                         if (movieJob != null)
                         {
-                            switch (movieJob.Status)
-                            {
-                                case MovieStatusEnum.Downloaded:
-                                    Console.ForegroundColor = ConsoleColor.DarkGreen;
-                                    status = "Dlded";
-                                    break;
-                                case MovieStatusEnum.Downloading:
-                                    Console.ForegroundColor = ConsoleColor.Yellow;
-                                    status = "Dlding";
-                                    break;
-                                case MovieStatusEnum.Finished:
-                                    Console.ForegroundColor = ConsoleColor.Green;
-                                    status = "Fnishd";
-                                    break;
-                                case MovieStatusEnum.DownloadQueued:
-                                    Console.ForegroundColor = ConsoleColor.DarkYellow;
-                                    status = "Queued";
-                                    break;
-                                case MovieStatusEnum.TranscodingStarted:
-                                    Console.ForegroundColor = ConsoleColor.Magenta;
-                                    status = "Transc";
-                                    break;
-                                case MovieStatusEnum.WatchingFor:
-                                    Console.ForegroundColor = ConsoleColor.Cyan;
-                                    status = "Wtchng";
-                                    break;
-                            }
-
-                            if (movieJob.Deleted != null)
-                            {
-                                Console.ForegroundColor = ConsoleColor.Cyan;
-                                status = "\u2713";
-                            }
+                            status = SetMovieConsoleStatus(movieJob);
                         }
 
-                        Console.WriteLine($"[{(i+1)}]\t{t.Seeders}\t{t.SizeGb}Gb\t{t.Name}");
+                        Console.WriteLine($"[{(i+1)}]\t{t.Seeders}\t{t.SizeGb}Gb\t{status}\t{t.Name}");
 
                         if (movieJob != null)
                             Console.ResetColor();
@@ -409,6 +345,82 @@ namespace net.jancerveny.sofaking.client.console
                     Console.ReadKey();
                 }
             }
+        }
+
+        private static string SetMovieConsoleStatus(Movie movieJob)
+        {
+            switch (movieJob.Status)
+            {
+                case MovieStatusEnum.WatchingFor:
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    return "Watching";
+                case MovieStatusEnum.DownloadQueued:
+                    Console.ForegroundColor = ConsoleColor.DarkYellow;
+                    return "Queued";
+                case MovieStatusEnum.Downloading:
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    return "Downloading";
+                case MovieStatusEnum.DownloadingPaused:
+                    Console.ForegroundColor = ConsoleColor.Gray;
+                    return "Paused";
+                case MovieStatusEnum.Downloaded:
+                    Console.ForegroundColor = ConsoleColor.DarkGreen;
+                    return "Downloaded";
+                case MovieStatusEnum.NoVideoFilesError:
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    return "No Video Files";
+                case MovieStatusEnum.TranscodingQueued:
+                    Console.ForegroundColor = ConsoleColor.DarkGreen;
+                    return "Transcoding Queued";
+                case MovieStatusEnum.AnalysisStarted:
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    return "Analysis Started";
+                case MovieStatusEnum.TranscodingStarted:
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    return "Transcoding Started";
+                case MovieStatusEnum.TranscodingFinished:
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    return "Transcoding Finished";
+                case MovieStatusEnum.TranscodingError:
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    return "Transcoding Error";
+                case MovieStatusEnum.Finished:
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    return "Finished";
+                case MovieStatusEnum.FileInUse:
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    return "File in use";
+                case MovieStatusEnum.FileNotFound:
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    return "File not found";
+                case MovieStatusEnum.CouldNotDeleteDownloadDirectory:
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    return "Download not deleted";
+                case MovieStatusEnum.TranscodingIncomplete:
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    return "Transcoding Incomplete";
+                case MovieStatusEnum.TranscodingRunningTooLong:
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    return "Transcoding for too long";
+                case MovieStatusEnum.AnalysisAudioFailed:
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    return "Audio analysis failed";
+                case MovieStatusEnum.AnalysisVideoFailed:
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    return "Video analysis failed";
+                case MovieStatusEnum.TorrentNotFound:
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    return "Torrent not found";
+            }
+
+            if (movieJob.Deleted != null)
+            {
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                return "\u2713";
+            }
+
+            Console.ForegroundColor = ConsoleColor.Red;
+            return "?";
         }
     }
 }

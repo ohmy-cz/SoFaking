@@ -28,7 +28,7 @@ namespace net.jancerveny.sofaking.Common.Utils
 			c.AppendLine($"Logo={fi.Name}");
 
 			await File.WriteAllTextAsync(desktopIniFile, c.ToString());
-			File.SetAttributes(desktopIniFile, File.GetAttributes(desktopIniFile) | FileAttributes.Hidden | FileAttributes.System);
+			File.SetAttributes(desktopIniFile, File.GetAttributes(desktopIniFile) | FileAttributes.Hidden);
 		}
 	}
 }

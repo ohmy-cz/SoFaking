@@ -24,9 +24,31 @@ namespace net.jancerveny.sofaking.BusinessLogic
             {
                 if(!string.IsNullOrWhiteSpace(movie.ImdbId) && await db.Movies.Where(x => x.ImdbId == movie.ImdbId).AnyAsync())
                 {
-                    return false;
+                    var m = await db.Movies.Where(x => x.ImdbId == movie.ImdbId).FirstOrDefaultAsync();
+                    m.Status = movie.Status;
+                    m.Actors = movie.Actors;
+                    m.Added = movie.Added;
+                    m.Creators = movie.Creators;
+                    m.Deleted = null;
+                    m.Description = movie.Description;
+                    m.Director = movie.Director;
+                    m.EpisodeId = movie.EpisodeId;
+                    m.Genres = movie.Genres;
+                    m.ImageUrl = movie.ImageUrl;
+                    m.ImdbScore = movie.ImdbScore;
+                    m.MetacriticScore = movie.MetacriticScore;
+                    m.Show = movie.Show;
+                    m.SizeGb = movie.SizeGb;
+                    m.Title = movie.Title;
+                    m.TorrentClientTorrentId = movie.TorrentClientTorrentId;
+                    m.TorrentHash = movie.TorrentHash;
+                    m.TorrentName = movie.TorrentName;
+                    m.TranscodingStarted = null;
+                    m.Year = movie.Year;
+                } else
+                {
+                    db.Movies.Add(movie);
                 }
-                db.Movies.Add(movie);
                 return await db.SaveChangesAsync() > 0;
             }
         }

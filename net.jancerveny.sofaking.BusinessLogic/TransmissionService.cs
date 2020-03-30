@@ -47,7 +47,14 @@ namespace net.jancerveny.sofaking.BusinessLogic
                     throw new Exception($"Unexpected HTTP response code: {response.StatusCode}, {await response.Content.ReadAsStringAsync()}");
                 }
 
-                return JsonSerializer.Deserialize<TransmissionTorrentAddResponse>(await response.Content.ReadAsStringAsync())?.Arguments?.TorrentAdded;
+                var tryAddRes = JsonSerializer.Deserialize<TransmissionTorrentAddResponse>(await response.Content.ReadAsStringAsync());
+                if (tryAddRes?.Arguments?.TorrentDuplicate != null)
+                {
+                    await RemoveTorrent(tryAddRes.Arguments.TorrentDuplicate.TorrentId);
+                    return await AddTorrentAsync(magnetLink);
+                }
+
+                return tryAddRes?.Arguments?.TorrentAdded;
             }
         }
 

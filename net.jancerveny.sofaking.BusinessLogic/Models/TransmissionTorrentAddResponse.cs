@@ -13,6 +13,8 @@ namespace net.jancerveny.sofaking.BusinessLogic.Models
     {
         [JsonPropertyName("torrent-added")]
         public TransmissionTorrentAddResponseTorrent TorrentAdded { get; set; }
+        [JsonPropertyName("torrent-duplicate")]
+        public TransmissionTorrentAddResponseTorrent TorrentDuplicate { get; set; }
     }
     public class TransmissionTorrentAddResponseTorrent : ITorrentAddedResponse
     {

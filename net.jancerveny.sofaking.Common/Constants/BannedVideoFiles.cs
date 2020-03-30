@@ -3,8 +3,9 @@
 	public static class BannedVideoFiles
 	{
 		public static readonly string[] Tokens = { 
-			"RARBG.com", 
-			"Sample" 
+			"rarbg.com", 
+			"sample",
+			"etrg"
 		};
 	}
 }

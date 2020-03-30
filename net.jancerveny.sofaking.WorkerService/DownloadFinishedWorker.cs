@@ -604,7 +604,7 @@ namespace net.jancerveny.sofaking.WorkerService
 
 			return Directory
 				.GetFiles(sourcePath)
-				.Where(x => Regexes.VideoFileTypes.IsMatch(x) && !BannedVideoFiles.Tokens.Contains(x.ToLower()))
+				.Where(x => Regexes.VideoFileTypes.IsMatch(x) && !BannedVideoFiles.Tokens.Where(y => x.ToLower().Contains(y)).Any())
 				.OrderByDescending(x => new FileInfo(x).Length)
 				.ToArray();
 		}
