@@ -151,7 +151,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				a.Append("-map_metadata 0 ");
 
 				// Video
-				a.Append($"-map 0:v -c:v {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? _configuration.OutputVideoCodec + $" {(_transcodingJob.SourceFile.Contains("2610p") || _transcodingJob.SourceFile.Contains("4K") ? "-vf scale=1080:-2 " : string.Empty)}-preset veryslow -b:v {_configuration.OutputVideoBitrateMbits}M -crf {_crf}" : "copy")} ");
+				a.Append($"-map 0:v -c:v {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? _configuration.OutputVideoCodec + $" {(_transcodingJob.SourceFile.ToLower().Contains("2160p") || _transcodingJob.SourceFile.ToLower().Contains("4k") ? "-vf scale=1080:-2 " : string.Empty)}-preset veryslow -b:v {_configuration.OutputVideoBitrateMbits}M -crf {_crf}" : "copy")} ");
 				a.Append($"-tune {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.VideoIsAnimation) ? "animation" : "film")} ");
 
 				// Audio

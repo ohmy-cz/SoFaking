@@ -19,6 +19,8 @@ namespace net.jancerveny.sofaking.BusinessLogic.Interfaces
         string ImageUrl { get; set; }
         GenreFlags Genres { get; set; }
         string Description { get; set; }
+        string Actors { get; set; }
+        string Creators { get; set; }
         string Director { get; set; }
     }
 }

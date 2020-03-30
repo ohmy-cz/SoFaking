@@ -11,6 +11,7 @@ using System.Threading;
 using System.Web;
 using System.Collections.Concurrent;
 using System.Linq;
+using net.jancerveny.sofaking.Common.Utils;
 
 namespace net.jancerveny.sofaking.BusinessLogic
 {
@@ -122,7 +123,9 @@ namespace net.jancerveny.sofaking.BusinessLogic
                             ImageUrl = imdbMatch.Image?.ImageUrl,
                             Genres = genres,
                             Description = structuredData.Description,
-                            Director = structuredData.Director?.Name
+                            Actors = structuredData.Actor != null ? string.Join(", ", structuredData.Actor?.Select(x => x.Name)) : string.Empty,
+                            Creators = structuredData.Creator != null ? string.Join(", ", structuredData.Creator?.Select(x => x.Name)) : string.Empty,
+                            Director = structuredData.Director != null ? string.Join(", ", structuredData.Director?.Select(x => x.Name)) : string.Empty
                         };
                     }
                 });

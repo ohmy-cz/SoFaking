@@ -338,6 +338,8 @@ namespace net.jancerveny.sofaking.client.console
                                     Genres = selectedMovie.Genres,
                                     Year = selectedMovie.ReleaseYear,
                                     Director = selectedMovie.Director,
+                                    Creators = selectedMovie.Creators,
+                                    Actors = selectedMovie.Actors,
                                     Description = selectedMovie.Description
                                 };
 

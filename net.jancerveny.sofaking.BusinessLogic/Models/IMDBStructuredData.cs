@@ -1,6 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using net.jancerveny.sofaking.Common.Utils;
+using System;
+using System.Text.Json.Serialization;
 
 namespace net.jancerveny.sofaking.BusinessLogic.Models
 {
@@ -10,10 +10,14 @@ namespace net.jancerveny.sofaking.BusinessLogic.Models
 		public string Url { get; set; }
 		public string Name { get; set; }
 		public string Image { get; set; }
+		[JsonConverter(typeof(MaybeArrayJsonConverter<string>))]
 		public string[] Genre { get; set; }
 		public string ContentRating { get; set; }
+		[JsonConverter(typeof(MaybeArrayJsonConverter<Person>))]
 		public Person[] Actor { get; set; }
-		public Person Director { get; set; }
+		[JsonConverter(typeof(MaybeArrayJsonConverter<Person>))]
+		public Person[] Director { get; set; }
+		[JsonConverter(typeof(MaybeArrayJsonConverter<Person>))]
 		public Person[] Creator { get; set; }
 		public string Description { get; set; }
 		public DateTime? DatePublished { get; set; }
