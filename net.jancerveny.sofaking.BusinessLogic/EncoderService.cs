@@ -185,6 +185,8 @@ namespace net.jancerveny.sofaking.BusinessLogic
 #if DEBUG
 				a.Append("-t 00:01:00.0 "); // only for debug. This makes ffmpeg never return though
 #endif
+				// Prevents some errors.
+				a.Append("-max_muxing_queue_size 9999 ");
 
 				// Metadata
 				// See: https://matroska.org/technical/specs/tagging/index.html
