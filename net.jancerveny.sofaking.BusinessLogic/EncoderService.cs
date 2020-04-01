@@ -7,8 +7,12 @@ using net.jancerveny.sofaking.BusinessLogic.Models;
 using net.jancerveny.sofaking.Common.Models;
 using net.jancerveny.sofaking.Common.Utils;
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -42,6 +46,13 @@ namespace net.jancerveny.sofaking.BusinessLogic
 		private const int _crf = 17;
 		private static readonly TimeSpan stalledCheckInterval = new TimeSpan(0, 5, 0);
 		private Action _onDoneInternal;
+
+		private static class Regexes
+		{
+			public static Regex FFMPEGStreams => new Regex(@"Stream\s#(?<StreamNumber>\d):(?<StreamIndex>\d)(?:\((?<Language>\w{3})\))?:\s(?<StreamType>\w+):\s(?<StreamCodec>.+?)(?:,\s|$)(?<StreamDetails>.+)?$(?:\s*Metadata:(?<MetaData>(?s).+?(?=$\s{5}\w|$\s\w)))?", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.ExplicitCapture);
+//			public static Regex FFMPEGStreams => new Regex(@"Stream\s#(?<StreamNumber>\d):(?<StreamIndex>\d)(?:\((?<Language>\w{3})\))?:\s(?<StreamType>\w+):\s(?<StreamCodec>.+?)(?:,\s|$)(?<StreamDetails>.+)?$(?:\s+(?<MetaData>(?s).+?(?=$\s{5}\w|$\s\w)))?", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.ExplicitCapture);
+			public static Regex FFMPEGMetadata => new Regex(@"^\s*(?<Key>[^\s]+)\s*:\s(?<Value>.+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture | RegexOptions.Multiline);
+		}
 
 		public EncoderService(ILogger<EncoderService> logger, EncoderConfiguration configuration, SoFakingConfiguration sofakingConfiguration)
 		{
@@ -89,19 +100,78 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 		public async Task<IMediaInfo> GetMediaInfo(string filePath)
 		{
-			var ffmpeg = new Engine(_configuration.FFMPEGBinary);
-			var inputFile = new MediaFile(filePath);
-			var metaData = await ffmpeg.GetMetaDataAsync(inputFile); // TODO: Make own, this sometimes fails
+			//var ffmpeg = new Engine(_configuration.FFMPEGBinary);
+			//var inputFile = new MediaFile(filePath);
+			//var metaData = await ffmpeg.GetMetaDataAsync(inputFile); // TODO: Make own, this sometimes fails
+			var fi = new FileInfo(filePath);
+			var process = new Process()
+			{
+				StartInfo = new ProcessStartInfo
+				{
+					FileName = _configuration.FFMPEGBinary,
+					Arguments = $"-i \"{filePath}\" -hide_banner",
+					RedirectStandardOutput = true,
+					RedirectStandardError = true,
+					UseShellExecute = false,
+					CreateNoWindow = true
+				}
+			};
 
-			int? bitrateKbs = metaData.Duration.TotalSeconds == 0 ? null : (int?)(Math.Ceiling((metaData.FileInfo.Length * 8) / 1024d) / metaData.Duration.TotalSeconds);
+			string result = string.Empty;
+
+			await Task.Run(() =>
+			{
+				process.Start();
+				result = process.StandardError.ReadToEnd();
+				process.WaitForExit();
+			});
+
+			if (result == string.Empty)
+			{
+				_logger.LogError($"Did not receive any file information from FFMPEG about {filePath}");
+				return null;
+			}
+
+			var streams = new List<StreamModel>();
+			var ddd = Regexes.FFMPEGStreams.Matches(result);
+			foreach (Match s in ddd)
+			{
+				if(!int.TryParse(s.Groups["StreamNumber"].Value, out int streamNumber) || !int.TryParse(s.Groups["StreamIndex"].Value, out int streamIndex))
+				{
+					continue;
+				}
+
+				var metadata = new Dictionary<string, string>();
+
+				foreach(Match m in Regexes.FFMPEGMetadata.Matches(s.Groups["MetaData"]?.Value))
+				{
+					metadata.Add(m.Groups["Key"].Value.Replace("\r", string.Empty), m.Groups["Value"].Value.Replace("\r", string.Empty));
+				}
+
+				streams.Add(new StreamModel
+				{
+					StreamIndex = streamIndex,
+					StreamNumber = streamNumber,
+					Language = s.Groups["Language"]?.Value?.Replace("\r", string.Empty),
+					StreamType = Enum.Parse<StreamTypeEnum>(s.Groups["StreamType"].Value),
+					StreamCodec = s.Groups["StreamCodec"]?.Value?.Replace("\r", string.Empty),
+					StreamDetails = s.Groups["StreamDetails"]?.Value?.Replace("\r", string.Empty),
+					Metadata = metadata
+				});
+			}
+
+			var videoStream = streams.Where(x => x.StreamType == StreamTypeEnum.Video).FirstOrDefault();
+			var audioStream = streams.Where(x => x.StreamType == StreamTypeEnum.Audio).OrderBy(x => x.StreamDetails != null && x.StreamDetails.ToLower().Contains("(default)")).FirstOrDefault();
+
+			int? bitrateKbs = videoStream.Duration.Value.TotalSeconds == 0 ? null : (int?)(Math.Ceiling((fi.Length * 8) / 1024d) / videoStream.Duration.Value.TotalSeconds);
 
 			return new MediaInfo {
-				VideoCodec = metaData?.VideoData?.Format,
-				VideoResolution = metaData?.VideoData?.FrameSize,
+				VideoCodec = videoStream.StreamCodec,
+				HorizontalVideoResolution = videoStream.HorizontalResolution,
 				BitrateKbs = bitrateKbs,
-				FileInfo = metaData?.FileInfo,
-				Duration = metaData.Duration,
-				AudioCodec = metaData?.AudioData?.Format // I assume this takes the default audio stream...
+				FileInfo = fi,
+				Duration = videoStream.Duration.Value,
+				AudioCodec = audioStream.StreamCodec // I assume this takes the default audio stream...
 			};
 		}
 

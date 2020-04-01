@@ -638,7 +638,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			if (mediaInfo.VideoCodec == null) throw new ArgumentNullException(nameof(mediaInfo.VideoCodec));
 			if (mediaInfo.FileInfo == null) throw new ArgumentNullException(nameof(mediaInfo.FileInfo));
 			if (!int.TryParse(_configuration.Resolution.Split("x")[0], out int allowedVideoWidth)) throw new ArgumentException($"Allowed video width not configured", nameof(_configuration.Resolution));
-			if (!int.TryParse(mediaInfo.VideoResolution.Split("x")[0], out int videoWidth)) throw new ArgumentException($"Unknown video file resolution: {mediaInfo?.VideoResolution ?? "N/A"}", nameof(mediaInfo.VideoResolution));
+			if (mediaInfo.HorizontalVideoResolution == -1) throw new ArgumentException($"Horizontal resolution invalid: {nameof(mediaInfo.HorizontalVideoResolution)}");
 
 			var acceptableCodec = false;
 			foreach (var vc in _configuration.AcceptedVideoCodecs)
@@ -650,7 +650,7 @@ namespace net.jancerveny.sofaking.WorkerService
 				}
 			}
 
-			var acceptableResolution = videoWidth <= allowedVideoWidth;
+			var acceptableResolution = mediaInfo.HorizontalVideoResolution <= allowedVideoWidth;
 			var acceptableSize = mediaInfo.FileInfo.Length > (_configuration.MaxPS4FileSizeGb * 1024 * 1024);
 			var acceptableBitrate = (mediaInfo.BitrateKbs == null || mediaInfo.BitrateKbs <= _encoderService.TargetBitrateKbs);
 
