@@ -5,9 +5,9 @@ using System.Text.RegularExpressions;
 
 namespace net.jancerveny.sofaking.BusinessLogic.Models
 {
-	public class StreamModel
+	public class FFMPEGStreamModel
 	{
-		public int StreamNumber { get; set; }
+		public int StreamId { get; set; }
 		public int StreamIndex { get; set; }
 		public string Language { get; set; }
 		public StreamTypeEnum StreamType { get; set; }

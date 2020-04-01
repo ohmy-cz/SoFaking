@@ -68,7 +68,7 @@ namespace net.jancerveny.sofaking.WorkerService
 						.AddSingleton<TPBParserService>()
 						.AddSingleton<ITorrentClientService, TransmissionService>()
 						.AddSingleton<IVerifiedMovieSearchService, ImdbService>()
-						.AddSingleton<IEncoderService, EncoderService>()
+						.AddSingleton<IEncoderService, FFMPEGEncoderService>()
 						.AddHostedService<DownloadFinishedWorker>();
 				});
 	}

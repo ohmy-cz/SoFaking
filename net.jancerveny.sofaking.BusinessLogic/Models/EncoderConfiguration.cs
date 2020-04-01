@@ -12,6 +12,5 @@ namespace net.jancerveny.sofaking.BusinessLogic.Models
 		public int OutputVideoBitrateMbits { get; set; }
 		public int OutputAudioBitrateMbits { get; set; }
 		public string TempFolder { get; set; }
-		public string[] AudioLanguages { get; set; }
 	}
 }
