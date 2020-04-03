@@ -519,9 +519,13 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				x.StreamType == StreamTypeEnum.Audio &&
 				x.Language == _sofakingConfiguration.AudioLanguages[0])
 			.OrderBy(x =>
+				x.StreamDetails.ToLower().Contains("(default)"))
+			.ThenBy(x =>
 				x.StreamCodec.ToLower() == "atmos")
 			.ThenBy(x =>
 				x.StreamCodec.ToLower() == "truehd")
+			.ThenBy(x =>
+				x.StreamCodec.ToLower() == "dts-hd")
 			.ThenBy(x =>
 				x.StreamCodec.ToLower().Contains("dts"))
 			.ThenBy(x =>
