@@ -25,7 +25,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
             public static Regex PagingRow => new Regex(@"<tr>\s*<td colspan=""9""(?:.+?)?>(.+)<\/td>\s*<\/tr>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
             public static Regex PagingRowPage => new Regex(@"<a(?:.+?)>(\d+)<\/a>\s", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
             public static Regex HTMLTags => new Regex(@"<[^>]*>", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
-            public static Regex SearchQuerySanitiaztion => new Regex(@"[^\s\w\d]", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            public static Regex SearchQuerySanitiaztion => new Regex(@"[^'\s\w\d]", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         }
 
         private int _pagingDepthLimit = 3;
@@ -46,7 +46,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
         /// <returns>A list of torrents ordered by Seeders</returns>
         public async Task<List<TorrentSearchResult>> Search(string queryRaw)
         {
-            string query = Regexes.SearchQuerySanitiaztion.Replace(queryRaw, " ");
+            string query = Regexes.SearchQuerySanitiaztion.Replace(queryRaw.Replace("é", "e"), " ");
             // TODO: Refactor this to make own TPB-crawler-specific client
             using (var client = _clientFactory.CreateClient())
             {
