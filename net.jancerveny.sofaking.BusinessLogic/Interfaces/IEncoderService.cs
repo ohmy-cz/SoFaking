@@ -10,7 +10,8 @@ namespace net.jancerveny.sofaking.BusinessLogic.Interfaces
 	{
 		Task StartTranscodingAsync(ITranscodingJob transcodingJob, Action onStart, Action onDoneInternal, Action onSuccessInternal, CancellationToken cancellationToken);
 		Task<IMediaInfo> GetMediaInfo(string filePath);
-		int TargetBitrateKbs { get; }
+		int TargetVideoBitrateKbs { get; }
+		int TargetAVBitrateKbs { get; }
 		string CurrentFile { get; }
 		bool Busy { get; }
 		void Kill();

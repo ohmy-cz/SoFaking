@@ -27,12 +27,14 @@ namespace net.jancerveny.sofaking.BusinessLogic
 		private string _tempFile;
 		private CancellationTokenSource _cancellationTokenSource;
 		private ITranscodingJob _transcodingJob;
-		private string _commandFile;
+		private string _shFile;
+		private string _batFile;
 		private string _coverImageFile;
+		public int TargetVideoBitrateKbs { get { return (int)(_configuration.OutputVideoBitrateMbits) * 1024; } }
 		/// <summary>
 		/// Compound bitrate for video and audio
 		/// </summary>
-		public int TargetBitrateKbs { get { return (_configuration.OutputVideoBitrateMbits + _configuration.OutputAudioBitrateMbits) * 1024; } }
+		public int TargetAVBitrateKbs { get { return (int)(_configuration.OutputVideoBitrateMbits + _configuration.OutputAudioBitrateMbits) * 1024; } }
 		public string CurrentFile { get; private set; }
 		public bool Busy { get { return _busy; } }
 		public DateTime? TranscodingStarted { get; private set; }
@@ -107,12 +109,12 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			}
 
 			var fi = new FileInfo(filePath);
-			var videoStream = fm.Streams.Where(x => x.StreamType == StreamTypeEnum.Video).FirstOrDefault();
-			var mainAudioStream = GetMainAudioStream(fm);
+			var videoStream = fm.MainVideoStream;
+			var mainAudioStream = fm.MainAudioStream(_sofakingConfiguration.AudioLanguages[0]);
 
-			if(mainAudioStream == null)
+			if(!string.IsNullOrWhiteSpace(mainAudioStream?.Language) && mainAudioStream.Language != _sofakingConfiguration.AudioLanguages[0])
 			{
-				throw new Exception($"Audio not meeting requirements: {filePath}. Required: {_sofakingConfiguration.AudioLanguages[0]}. Found languages: {string.Join(", ", fm.Streams.Select(x => x.Language))}");
+				throw new Exception($"The main audio stream's language {mainAudioStream.Language} does not equal {_sofakingConfiguration.AudioLanguages[0]}.");
 			}
 
 			if (fm.Duration == null)
@@ -120,12 +122,12 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				throw new Exception($"No main duration found in {filePath}");
 			}
 
-			int? bitrateKbs = fm.Duration.TotalSeconds == 0 ? null : (int?)(Math.Ceiling((fi.Length * 8) / 1024d) / fm.Duration.TotalSeconds);
+			int? AVBitrateKbs = fm.Duration.TotalSeconds == 0 ? null : (int?)(Math.Ceiling((fi.Length * 8) / 1024d) / fm.Duration.TotalSeconds);
 
 			return new MediaInfo {
 				VideoCodec = videoStream.StreamCodec,
 				HorizontalVideoResolution = videoStream.HorizontalResolution,
-				BitrateKbs = bitrateKbs,
+				AVBitrateKbs = AVBitrateKbs,
 				FileInfo = fi,
 				Duration = fm.Duration,
 				AudioCodec = mainAudioStream.StreamCodec
@@ -169,19 +171,14 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				throw new Exception($"Could not get FFMPEG file model: {nameof(fm)} was null.");
 			}
 
-			var mainAudioStream = GetMainAudioStream(fm);
-
-			if (mainAudioStream == null)
-			{
-				_logger.LogError($"Audio not meeting requirements: {CurrentFile}. Required: {_sofakingConfiguration.AudioLanguages[0]}. Found languages: {string.Join(", ", fm.Streams.Select(x => x.Language))}");
-				Kill();
-			}
+			var mainAudioStream = fm.MainAudioStream(_sofakingConfiguration.AudioLanguages[0]);
 
 			_logger.LogDebug("Preparing files");
 			var destinationFile = Path.Combine(_transcodingJob.DestinationFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".mkv");
 			var ffmpeg = new Engine(_configuration.FFMPEGBinary);
 			_tempFile = Path.Combine(_configuration.TempFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".mkv");
-			_commandFile = Path.Combine(_configuration.TempFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".sh");
+			_shFile = Path.Combine(_configuration.TempFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".sh");
+			_batFile = Path.Combine(_configuration.TempFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".bat");
 			_coverImageFile = Path.Combine(_configuration.TempFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".jpg");
 
 			// Discard all streams except those in _configuration.AudioLanguages
@@ -195,7 +192,28 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			a.Append("-map_metadata 0 ");
 
 			// Video
-			a.Append($"-map 0:v -c:v {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? _configuration.OutputVideoCodec + $" {(_transcodingJob.SourceFile.ToLower().Contains("2160p") || _transcodingJob.SourceFile.ToLower().Contains("4k") ? "-vf scale=1920:-2 " : string.Empty)}-preset veryslow -b:v {_configuration.OutputVideoBitrateMbits}M -crf {_crf}" : "copy")} ");
+			a.Append($"-map 0:v -c:v ");
+			if(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo))
+			{
+				// Resize?
+				a.Append(_configuration.OutputVideoCodec + " " + (fm.MainVideoStream.HorizontalResolution > _sofakingConfiguration.MaxHorizontalVideoResolution ? $"-vf scale={_sofakingConfiguration.MaxHorizontalVideoResolution}:-2 " : string.Empty));
+
+				// This seems required, although CRF should have taken priority...
+				a.Append($"-b:v {_configuration.OutputVideoBitrateMbits}M ");
+
+				// Constant Rate Factor, the lower the better; 0 = lossless
+				a.Append($"-crf {_crf} ");
+
+				// These arguments are here for improved compatibility. Level 4.0 is the lowest bandwidth required for FullHD - good for better compatibility and network streaming
+				// http://blog.mediacoderhq.com/h264-profiles-and-levels/
+				a.Append("-profile:v high -level 4.2 -pix_fmt yuv420p ");
+
+				// Get the highest quality possible
+				a.Append("-preset veryslow ");
+			} else
+			{
+				a.Append("copy ");
+			}
 			a.Append($"-tune {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.VideoIsAnimation) ? "animation" : "film")} ");
 
 			// Audio
@@ -243,7 +261,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			// See: https://matroska.org/technical/specs/tagging/index.html
 			a.Append("-metadata ENCODER=\"SoFaking\" ");
 			a.Append($"-metadata COMMENT=\"Original file name: {Path.GetFileName(CurrentFile)}\" ");
-			a.Append($"-metadata ENCODER_SETTINGS=\"V: {_configuration.OutputVideoCodec} -CRF {_crf}, A:{_configuration.OutputAudioCodec}@{_configuration.OutputAudioBitrateMbits}M\" ");
+			a.Append($"-metadata ENCODER_SETTINGS=\"V: {_configuration.OutputVideoCodec + (_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? $" -CRF {_crf}" : " (copy)")}, A:{_configuration.OutputAudioCodec}@{_configuration.OutputAudioBitrateMbits}M\" ");
 			if (_transcodingJob.Metadata != null && _transcodingJob.Metadata.Count > 0)
 			{
 				foreach (var m in _transcodingJob.Metadata)
@@ -312,7 +330,6 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			_logger.LogDebug("Setting up events");
 			ffmpeg.Progress += (object sender, ConversionProgressEventArgs e) =>
 			{
-				//_logger.LogDebug((e.ProcessedDuration.Ticks / transcodingJob.Duration.Ticks).ToString("0.#"));
 				_logger.LogDebug($"Progress: {(transcodingJob.Duration.Ticks == 0 ? "N/A" : $"{(((double)e.ProcessedDuration.Ticks / (double)transcodingJob.Duration.Ticks) * 100d):0.#}%")}\tProcessed duration: {e.ProcessedDuration}\tFPS:{e.Fps}\tSize: {e.SizeKb} kb\t{Path.GetFileName(CurrentFile)}");
 			};
 				
@@ -337,9 +354,16 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				_busy = false;
 			};
 
-			_logger.LogDebug($"Adding a {_commandFile} command file for debugging.");
+			_logger.LogDebug($"Adding a {_shFile} sh file for debugging.");
 			// Make an .sh file with the same command for eventual debugging
-			await File.WriteAllTextAsync(_commandFile, _configuration.FFMPEGBinary + " " + a.ToString());
+			await File.WriteAllTextAsync(_shFile, _configuration.FFMPEGBinary + " " + a.ToString());
+
+			// For Windows...
+			// TODO: Refactor paths
+			_logger.LogDebug($"Adding a {_batFile} bat file for debugging.");
+			var cmdWin = "ffmpeg -t 00:01:00 " + a.ToString().Replace("h264_omx", "h264").Replace("/mnt/hd1/", "Z:\\").Replace("/", "\\") + "\r\npause";
+			cmdWin = Regex.Replace(cmdWin, @"Z:\\TEMP\\Transcoding\\(?<FileName>[^""]+?\.mkv)", "C:\\Users\\ohmy\\Desktop\\FFMPEG\\${FileName}", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+			await File.WriteAllTextAsync(_batFile, cmdWin);
 
 			_logger.LogDebug("Starting ffmpeg");
 			try
@@ -420,9 +444,14 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				File.Delete(_tempFile);
 			}
 
-			if (!keepCommand && File.Exists(_commandFile))
+			if (!keepCommand && File.Exists(_shFile))
 			{ 
-				File.Delete(_commandFile);
+				File.Delete(_shFile);
+			}
+
+			if (!keepCommand && File.Exists(_batFile))
+			{
+				File.Delete(_batFile);
 			}
 
 			CurrentFile = null;
@@ -513,23 +542,5 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 			return fm;
 		}
-
-		private FFMPEGStreamModel GetMainAudioStream(FFMPEGFileModel fm) => fm == null ? null : fm.Streams
-			.Where(x =>
-				x.StreamType == StreamTypeEnum.Audio &&
-				x.Language == _sofakingConfiguration.AudioLanguages[0])
-			.OrderBy(x =>
-				x.StreamDetails.ToLower().Contains("(default)"))
-			.ThenBy(x =>
-				x.StreamCodec.ToLower() == "atmos")
-			.ThenBy(x =>
-				x.StreamCodec.ToLower() == "truehd")
-			.ThenBy(x =>
-				x.StreamCodec.ToLower() == "dts-hd")
-			.ThenBy(x =>
-				x.StreamCodec.ToLower().Contains("dts"))
-			.ThenBy(x =>
-				x.StreamCodec.ToLower() == "ac3")
-			.FirstOrDefault();
 	}
 }

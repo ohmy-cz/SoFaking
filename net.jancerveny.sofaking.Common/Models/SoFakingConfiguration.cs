@@ -6,6 +6,8 @@ namespace net.jancerveny.sofaking.Common.Models
 {
 	public class SoFakingConfiguration
 	{
+		public int MaxHorizontalVideoResolution { get; set; }
+		public int MaxSizeGb { get; set; }
 		public string [] AudioLanguages { get; set; }
 	}
 }

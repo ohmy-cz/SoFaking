@@ -4,6 +4,7 @@ using net.jancerveny.sofaking.BusinessLogic;
 using net.jancerveny.sofaking.BusinessLogic.Interfaces;
 using net.jancerveny.sofaking.BusinessLogic.Models;
 using net.jancerveny.sofaking.Common.Constants;
+using net.jancerveny.sofaking.Common.Models;
 using net.jancerveny.sofaking.Common.Utils;
 using net.jancerveny.sofaking.DataLayer.Models;
 using net.jancerveny.sofaking.WorkerService.Models;
@@ -31,12 +32,13 @@ namespace net.jancerveny.sofaking.WorkerService
 		private readonly IHttpClientFactory _clientFactory;
 		private readonly ILogger<DownloadFinishedWorker> _logger;
 		private readonly DownloadFinishedWorkerConfiguration _configuration;
+		private readonly SoFakingConfiguration _sofakingConfiguration;
 		private readonly MovieService _movieService;
 		private readonly ITorrentClientService _torrentClient;
 		private readonly IEncoderService _encoderService;
 		private static ConcurrentDictionary<int, ITranscodingJob> _transcodingJobs = new ConcurrentDictionary<int, ITranscodingJob>();
 
-		public DownloadFinishedWorker(ILogger<DownloadFinishedWorker> logger, IHttpClientFactory clientFactory, DownloadFinishedWorkerConfiguration configuration, MovieService movieService, ITorrentClientService torrentClient, IEncoderService encoderService)
+		public DownloadFinishedWorker(ILogger<DownloadFinishedWorker> logger, IHttpClientFactory clientFactory, DownloadFinishedWorkerConfiguration configuration, MovieService movieService, ITorrentClientService torrentClient, IEncoderService encoderService, SoFakingConfiguration sofakingConfiguration)
 		{
 			if (clientFactory == null) throw new ArgumentNullException(nameof(clientFactory));
 			if (movieService == null) throw new ArgumentNullException(nameof(movieService));
@@ -44,6 +46,8 @@ namespace net.jancerveny.sofaking.WorkerService
 			if (logger == null) throw new ArgumentNullException(nameof(logger));
 			if (torrentClient == null) throw new ArgumentNullException(nameof(torrentClient));
 			if (encoderService == null) throw new ArgumentNullException(nameof(encoderService));
+			if (sofakingConfiguration == null) throw new ArgumentNullException(nameof(sofakingConfiguration));
+			_sofakingConfiguration = sofakingConfiguration;
 			_clientFactory = clientFactory;
 			_movieService = movieService;
 			_configuration = configuration;
@@ -415,8 +419,16 @@ namespace net.jancerveny.sofaking.WorkerService
 			// Check if any files need transcoding
 			foreach (var videoFile in videoFiles)
 			{
+				IMediaInfo mediaInfo = null;
 				_logger.LogInformation($"Analyzing {Path.GetFileName(videoFile)}");
-				var mediaInfo = await _encoderService.GetMediaInfo(videoFile);
+				try
+				{
+					mediaInfo = await _encoderService.GetMediaInfo(videoFile);
+				}
+				catch (Exception ex){
+					_logger.LogError($"{nameof(_encoderService.GetMediaInfo)} failed with: {ex.Message}", ex);
+				}
+
 				if(mediaInfo == null)
 				{
 					_logger.LogWarning($"File {Path.GetFileName(videoFile)} returned no {nameof(mediaInfo)}");
@@ -604,7 +616,7 @@ namespace net.jancerveny.sofaking.WorkerService
 
 			return Directory
 				.GetFiles(sourcePath)
-				.Where(x => Regexes.VideoFileTypes.IsMatch(x) && !BannedVideoFiles.Tokens.Where(y => x.ToLower().Contains(y)).Any())
+				.Where(x => Regexes.VideoFileTypes.IsMatch(Path.GetFileName(x)) && !BannedVideoFiles.Tokens.Where(y => Path.GetFileName(x).ToLower().Contains(y)).Any())
 				.OrderByDescending(x => new FileInfo(x).Length)
 				.ToArray();
 		}
@@ -631,13 +643,10 @@ namespace net.jancerveny.sofaking.WorkerService
 
 		private bool HasAcceptableVideo(IMediaInfo mediaInfo)
 		{
-			if (_configuration.MaxPS4FileSizeGb == 0) throw new ArgumentNullException(nameof(_configuration.MaxPS4FileSizeGb));
-			if (_configuration.Resolution == null) throw new ArgumentNullException(nameof(_configuration.Resolution));
 			if (_configuration.AcceptedVideoCodecs == null) throw new ArgumentNullException(nameof(_configuration.AcceptedVideoCodecs));
 			if (mediaInfo == null) throw new ArgumentNullException(nameof(mediaInfo));
 			if (mediaInfo.VideoCodec == null) throw new ArgumentNullException(nameof(mediaInfo.VideoCodec));
 			if (mediaInfo.FileInfo == null) throw new ArgumentNullException(nameof(mediaInfo.FileInfo));
-			if (!int.TryParse(_configuration.Resolution.Split("x")[0], out int allowedVideoWidth)) throw new ArgumentException($"Allowed video width not configured", nameof(_configuration.Resolution));
 			if (mediaInfo.HorizontalVideoResolution == -1) throw new ArgumentException($"Horizontal resolution invalid: {nameof(mediaInfo.HorizontalVideoResolution)}");
 
 			var acceptableCodec = false;
@@ -650,9 +659,11 @@ namespace net.jancerveny.sofaking.WorkerService
 				}
 			}
 
-			var acceptableResolution = mediaInfo.HorizontalVideoResolution <= allowedVideoWidth;
-			var acceptableSize = mediaInfo.FileInfo.Length > (_configuration.MaxPS4FileSizeGb * 1024 * 1024);
-			var acceptableBitrate = (mediaInfo.BitrateKbs == null || mediaInfo.BitrateKbs <= _encoderService.TargetBitrateKbs);
+			var acceptableResolution = mediaInfo.HorizontalVideoResolution <= _sofakingConfiguration.MaxHorizontalVideoResolution;
+			var acceptableSize = mediaInfo.FileInfo.Length > (_sofakingConfiguration.MaxSizeGb * 1024 * 1024);
+			// TODO: Fixing getting the video bitrate right would speed up the program significantly.
+			// Unfortunately, FFMPEG can't return bitrate of only the video stream. So we will ONLY stream copy if video and all the audio streams combined have a lower bitrate than level 4.2 h264 video bitrate compatible with PS4 (6,25Mbit/s)
+			var acceptableBitrate = (mediaInfo.AVBitrateKbs == null || mediaInfo.AVBitrateKbs <= _encoderService.TargetVideoBitrateKbs);
 
 			return acceptableCodec && acceptableResolution && acceptableSize && acceptableBitrate;
 		}
