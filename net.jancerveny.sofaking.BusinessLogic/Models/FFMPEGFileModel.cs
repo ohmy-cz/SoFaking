@@ -14,21 +14,17 @@ namespace net.jancerveny.sofaking.BusinessLogic.Models
 		{
 			Streams = new List<FFMPEGStreamModel>();
 		}
-		public FFMPEGStreamModel MainAudioStream(string lang) => !Streams.Any() ? null : Streams
+		public FFMPEGStreamModel MainAudioStream(string[] langs) => !Streams.Any() ? null : Streams
 			.Where(x =>
 				x.StreamType == StreamTypeEnum.Audio)
-			.OrderBy(x =>
-				(string.IsNullOrWhiteSpace(lang) ? true : x.Language == lang)) // We can not require the language, because some video files have only one audio stream without language identification.
-			.ThenBy(x =>
+			.OrderByDescending(x =>
+				langs.ToList().IndexOf(x.Language)) // We can not require the language, because some video files have only one audio stream without language identification.
+			.ThenByDescending(x =>
 				x.StreamDetails.ToLower().Contains("(default)"))
-			.ThenBy(x =>
-				x.StreamCodec.ToLower() == "atmos")
-			.ThenBy(x =>
-				x.StreamCodec.ToLower() == "truehd")
-			.ThenBy(x =>
-				x.StreamCodec.ToLower().Contains("dts"))
-			.ThenBy(x =>
-				x.StreamCodec.ToLower() == "ac3")
+			.ThenByDescending(x =>
+				x.StreamDetails.ToLower().Contains("truehd") || 
+				x.StreamDetails.ToLower().Contains("dts") || 
+				x.StreamDetails.ToLower().Contains("atmos"))
 			.FirstOrDefault();
 		public FFMPEGStreamModel MainVideoStream => !Streams.Any() ? null : Streams.Where(x => x.StreamType == StreamTypeEnum.Video).FirstOrDefault();
 	}

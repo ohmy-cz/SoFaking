@@ -207,7 +207,7 @@ namespace net.jancerveny.sofaking.WorkerService
 
 		private async Task HandleCrashedTranscoding()
 		{
-			var movieJobs = (await _movieService.GetMoviesAsync()).Where(x => x.Status == MovieStatusEnum.TranscodingStarted);
+			var movieJobs = (await _movieService.GetMoviesAsync()).Where(x => x.Status == MovieStatusEnum.TranscodingStarted || x.Status == MovieStatusEnum.AnalysisStarted);
 			if(movieJobs.Count() > 0)
 			{
 				foreach (var movieJob in movieJobs)

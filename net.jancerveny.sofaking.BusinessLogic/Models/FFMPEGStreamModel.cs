@@ -24,5 +24,6 @@ namespace net.jancerveny.sofaking.BusinessLogic.Models
 public enum StreamTypeEnum {
 	Audio,
 	Video,
-	Subtitle
+	Subtitle,
+	Attachment
 }

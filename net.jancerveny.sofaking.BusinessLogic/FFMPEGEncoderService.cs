@@ -102,7 +102,16 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 		public async Task<IMediaInfo> GetMediaInfo(string filePath)
 		{
-			var fm = await GetFileModelAsync(filePath);
+			FFMPEGFileModel fm;
+			try
+			{
+				fm = await GetFileModelAsync(filePath);
+			} catch(Exception ex)
+			{
+				_logger.LogError($"Failed constructing FFMPEG File model: {ex.Message}", ex);
+				throw;
+			}
+
 			if(fm == null)
 			{
 				throw new Exception($"Could not get FFMPEG file model: {nameof(fm)} was null.");
@@ -110,9 +119,9 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 			var fi = new FileInfo(filePath);
 			var videoStream = fm.MainVideoStream;
-			var mainAudioStream = fm.MainAudioStream(_sofakingConfiguration.AudioLanguages[0]);
+			var mainAudioStream = fm.MainAudioStream(_sofakingConfiguration.AudioLanguages);
 
-			if(!string.IsNullOrWhiteSpace(mainAudioStream?.Language) && mainAudioStream.Language != _sofakingConfiguration.AudioLanguages[0])
+			if(!string.IsNullOrWhiteSpace(mainAudioStream?.Language) && !_sofakingConfiguration.AudioLanguages.Contains(mainAudioStream.Language))
 			{
 				throw new Exception($"The main audio stream's language {mainAudioStream.Language} does not equal {_sofakingConfiguration.AudioLanguages[0]}.");
 			}
@@ -171,7 +180,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				throw new Exception($"Could not get FFMPEG file model: {nameof(fm)} was null.");
 			}
 
-			var mainAudioStream = fm.MainAudioStream(_sofakingConfiguration.AudioLanguages[0]);
+			var mainAudioStream = fm.MainAudioStream(_sofakingConfiguration.AudioLanguages);
 
 			_logger.LogDebug("Preparing files");
 			var destinationFile = Path.Combine(_transcodingJob.DestinationFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".mkv");
