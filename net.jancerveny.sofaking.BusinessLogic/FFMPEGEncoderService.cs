@@ -49,8 +49,8 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 		private static class Regexes
 		{
-			public static Regex FFMPEGBasicInfo => new Regex(@"^\s{2}Duration:\s(?<Duration>.+),\sstart\:\s(?<Start>.+),\sbitrate\:\s(?<Bitrate>\d+)\skb\/s", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Compiled |  RegexOptions.ExplicitCapture);
-			public static Regex FFMPEGStreams => new Regex(@"Stream\s#(?<StreamId>\d):(?<StreamIndex>\d)(?:\((?<Language>\w{3})\))?:\s(?<StreamType>\w+):\s(?<StreamCodec>.+?)(?:,\s|$)(?<StreamDetails>.+)?$(?:\s*Metadata:(?<MetaData>(?s).+?(?=$\s{5}\w|$\s\w)))?", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.ExplicitCapture);
+			public static Regex FFMPEGBasicInfo => new Regex(@"^\s{2}Duration:\s(?<Duration>.+),\sstart\:\s(?<Start>.+),\sbitrate\:\s(?<Bitrate>\d+)\skb\/s", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Compiled |  RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(5));
+			public static Regex FFMPEGStreams => new Regex(@"Stream\s#(?<StreamId>\d):(?<StreamIndex>\d)(?:\((?<Language>\w{3})\))?:\s(?<StreamType>\w+):\s(?<StreamCodec>.+?)(?:,\s|$)(?<StreamDetails>.+)?$(?:\s*Metadata:(?<MetaData>(?s).+?(?=$\s{5}\w|$\s\w)))?", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(5));
 			public static Regex FFMPEGMetadata => new Regex(@"^\s*(?<Key>[^\s]+)\s*:\s(?<Value>.+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture | RegexOptions.Multiline);
 		}
 
@@ -195,7 +195,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			a.Append("-map_metadata 0 ");
 
 			// Video
-			a.Append($"-map 0:v -c:v {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? _configuration.OutputVideoCodec + $" {(_transcodingJob.SourceFile.ToLower().Contains("2160p") || _transcodingJob.SourceFile.ToLower().Contains("4k") ? "-vf scale=1080:-2 " : string.Empty)}-preset veryslow -b:v {_configuration.OutputVideoBitrateMbits}M -crf {_crf}" : "copy")} ");
+			a.Append($"-map 0:v -c:v {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? _configuration.OutputVideoCodec + $" {(_transcodingJob.SourceFile.ToLower().Contains("2160p") || _transcodingJob.SourceFile.ToLower().Contains("4k") ? "-vf scale=1920:-2 " : string.Empty)}-preset veryslow -b:v {_configuration.OutputVideoBitrateMbits}M -crf {_crf}" : "copy")} ");
 			a.Append($"-tune {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.VideoIsAnimation) ? "animation" : "film")} ");
 
 			// Audio
@@ -522,6 +522,8 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				x.StreamCodec.ToLower() == "atmos")
 			.ThenBy(x =>
 				x.StreamCodec.ToLower() == "truehd")
+			.ThenBy(x =>
+				x.StreamCodec.ToLower().Contains("dts"))
 			.ThenBy(x =>
 				x.StreamCodec.ToLower() == "ac3")
 			.FirstOrDefault();

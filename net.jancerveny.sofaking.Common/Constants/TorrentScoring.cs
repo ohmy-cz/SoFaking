@@ -73,6 +73,7 @@ namespace net.jancerveny.sofaking.Common.Constants
             { "720p", BannedTag},
             { "1080i", BannedTag },
             { "HDTV", BannedTag },
+            { "SCREENER", BannedTag },
             { "Collection", BannedTag }, // For the metadatatagging to work properly, we need to download one movie at a time.
             { "Duology", BannedTag }, // -- || --
             { "Trilogy", BannedTag }, // -- || --
