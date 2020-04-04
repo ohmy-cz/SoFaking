@@ -11,5 +11,7 @@
 		/// If transcoding takes longer than this amount of hours, we will stop it and move on. FFMpeg sometimes ends transcoding succesfully, but doesn't report back.
 		/// </summary>
 		public int TranscodingStaleAfterH { get; set; }
+		public string FinishedCommandExecutable { get; set; }
+		public string FinishedCommandArguments { get; set; }
 	}
 }

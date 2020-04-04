@@ -639,6 +639,27 @@ namespace net.jancerveny.sofaking.WorkerService
 			await _torrentClient.RemoveTorrent(torrent.Id);
 #endif
 			await _movieService.SetMovieStatus(movie.Id, MovieStatusEnum.Finished);
+
+			// Inform Minidlna or other services about the new download.
+			if(!string.IsNullOrWhiteSpace(_configuration.FinishedCommandExecutable))
+			{
+				var process = new Process()
+				{
+					StartInfo = new ProcessStartInfo
+					{
+						FileName = _configuration.FinishedCommandExecutable,
+						Arguments = _configuration.FinishedCommandArguments,
+						UseShellExecute = false,
+						CreateNoWindow = true
+					}
+				};
+
+				await Task.Run(() =>
+				{
+					process.Start();
+					process.WaitForExit();
+				});
+			}
 		}
 
 		private bool HasAcceptableVideo(IMediaInfo mediaInfo)

@@ -215,7 +215,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 				// These arguments are here for improved compatibility. Level 4.0 is the lowest bandwidth required for FullHD - good for better compatibility and network streaming
 				// http://blog.mediacoderhq.com/h264-profiles-and-levels/
-				a.Append("-profile:v high -level 4.2 -pix_fmt yuv420p ");
+				a.Append("-profile:v high -level 4.1 -pix_fmt yuv420p ");
 
 				// Get the highest quality possible
 				a.Append("-preset veryslow ");
@@ -260,9 +260,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 			// Subtitles
 			a.Append($"-map 0:s{optionalFlag} ");
-#if DEBUG
-			a.Append("-t 00:01:00.0 "); // only for debug. This makes ffmpeg never return though
-#endif
+
 			// Prevents some errors.
 			a.Append("-max_muxing_queue_size 9999 ");
 
