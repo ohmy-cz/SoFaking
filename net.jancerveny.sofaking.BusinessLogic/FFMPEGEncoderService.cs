@@ -201,7 +201,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			a.Append("-map_metadata 0 ");
 
 			// Video
-			a.Append($"-map 0:v -c:v ");
+			a.Append($"-map 0:v -c:v:0 ");
 			if(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo))
 			{
 				// Resize?
@@ -215,7 +215,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 				// These arguments are here for improved compatibility. Level 4.0 is the lowest bandwidth required for FullHD - good for better compatibility and network streaming
 				// http://blog.mediacoderhq.com/h264-profiles-and-levels/
-				a.Append("-profile:v high -level 4.1 -pix_fmt yuv420p ");
+				a.Append("-profile:v high -level:v 4.1 -pix_fmt yuv420p ");
 
 				// Get the highest quality possible
 				a.Append("-preset veryslow ");

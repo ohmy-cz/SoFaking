@@ -387,10 +387,10 @@ namespace net.jancerveny.sofaking.WorkerService
 			
 			try
 			{
-					var coverImage = Path.Combine(MovieFinishedDirectory(movie), "Cover.jpg");
-					await Download.GetFile(movie.ImageUrl, coverImage);
-					await WindowsFolder.SetFolderPictureAsync(coverImage);
-					File.SetAttributes(coverImage, File.GetAttributes(coverImage) | FileAttributes.Hidden);
+				var coverImage = Path.Combine(MovieFinishedDirectory(movie), "Cover.jpg");
+				await Download.GetFile(movie.ImageUrl, coverImage);
+				await WindowsFolder.SetFolderPictureAsync(coverImage);
+				File.SetAttributes(coverImage, File.GetAttributes(coverImage) | FileAttributes.Hidden);
 			}
 			catch (Exception ex)
 			{
