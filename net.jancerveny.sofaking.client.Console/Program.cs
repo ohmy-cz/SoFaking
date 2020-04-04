@@ -226,14 +226,8 @@ namespace net.jancerveny.sofaking.client.console
                     while (true)
                     {
                         var selectedTorrent = bestTorrent;
-                        string input = string.Empty;
-                        if (foundTorrents.Count() < 10)
-                        {
-                            input = Console.ReadKey().KeyChar.ToString();
-                        } else
-                        {
-                            input = Console.ReadLine();
-                        }
+                        string input = Console.ReadLine();
+                        
                         if (input == "n")
                         {
                             restartFlag2 = true;
