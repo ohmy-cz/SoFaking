@@ -3,6 +3,7 @@
   <PropertyGroup>
     <TargetFramework>netcoreapp3.1</TargetFramework>
     <UserSecretsId>dotnet-net.jancerveny.sofaking.WorkerService-9D8F6348-ADFA-4CE2-A3DA-2773228CE8E6</UserSecretsId>
+    <ApplicationIcon>SoFaking.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

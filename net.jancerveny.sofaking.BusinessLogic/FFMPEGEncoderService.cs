@@ -29,7 +29,6 @@ namespace net.jancerveny.sofaking.BusinessLogic
 		private ITranscodingJob _transcodingJob;
 		private string _shFile;
 		private string _batFile;
-		private string _coverImageFile;
 		public int TargetVideoBitrateKbs { get { return (int)(_configuration.OutputVideoBitrateMbits) * 1024; } }
 		/// <summary>
 		/// Compound bitrate for video and audio
@@ -143,7 +142,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			};
 		}
 
-		public async Task StartTranscodingAsync(ITranscodingJob transcodingJob, Action onStart, Action onDoneInternal, Action onSuccessInternal, CancellationToken cancellationToken = default)
+		public async Task StartTranscodingAsync(ITranscodingJob transcodingJob, Action onStart, Action onDoneInternal, Action<string> onSuccessInternal, CancellationToken cancellationToken = default)
 		{
 			if (!File.Exists(transcodingJob.SourceFile))
 			{
@@ -181,14 +180,12 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			}
 
 			var mainAudioStream = fm.MainAudioStream(_sofakingConfiguration.AudioLanguages);
+			var ffmpeg = new Engine(_configuration.FFMPEGBinary);
 
 			_logger.LogDebug("Preparing files");
-			var destinationFile = Path.Combine(_transcodingJob.DestinationFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".mkv");
-			var ffmpeg = new Engine(_configuration.FFMPEGBinary);
-			_tempFile = Path.Combine(_configuration.TempFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".mkv");
-			_shFile = Path.Combine(_configuration.TempFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".sh");
-			_batFile = Path.Combine(_configuration.TempFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".bat");
-			_coverImageFile = Path.Combine(_configuration.TempFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".jpg");
+			_tempFile = Path.Combine(_sofakingConfiguration.TempFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".mkv");
+			_shFile = Path.Combine(_sofakingConfiguration.TempFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".sh");
+			_batFile = Path.Combine(_sofakingConfiguration.TempFolder, Path.GetFileNameWithoutExtension(CurrentFile) + ".bat");
 
 			// Discard all streams except those in _configuration.AudioLanguages
 			// Reencode the english stream only, and add it as primary stream. Copy all other desirable audio languages from the list.
@@ -201,7 +198,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			a.Append("-map_metadata 0 ");
 
 			// Video
-			a.Append($"-map 0:v -c:v:0 ");
+			a.Append($"-map 0:v:0 -c:v ");
 			if(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo))
 			{
 				// Resize?
@@ -266,33 +263,21 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 			// Metadata
 			// See: https://matroska.org/technical/specs/tagging/index.html
-			a.Append("-metadata ENCODER=\"SoFaking\" ");
 			a.Append($"-metadata COMMENT=\"Original file name: {Path.GetFileName(CurrentFile)}\" ");
 			a.Append($"-metadata ENCODER_SETTINGS=\"V: {_configuration.OutputVideoCodec + (_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? $" -CRF {_crf}" : " (copy)")}, A:{_configuration.OutputAudioCodec}@{_configuration.OutputAudioBitrateMbits}M\" ");
+
+			// Cover image
+			if (!string.IsNullOrWhiteSpace(_transcodingJob.CoverImageJpg))
+			{
+				a.Append($"-attach \"{_transcodingJob.CoverImageJpg}\" -metadata:s:t mimetype=image/jpeg ");
+			}
+
 			if (_transcodingJob.Metadata != null && _transcodingJob.Metadata.Count > 0)
 			{
 				foreach (var m in _transcodingJob.Metadata)
 				{
 					if(string.IsNullOrWhiteSpace(m.Value))
 					{
-						continue;
-					}
-
-					if(m.Key == FFMPEGMetadataEnum.cover)
-					{
-						if (!string.IsNullOrWhiteSpace(m.Value))
-						{
-							try
-							{
-								await Download.GetFile(m.Value, _coverImageFile);
-								a.Append($"-attach \"{_coverImageFile}\" -metadata:s:t mimetype=image/jpeg ");
-							}
-							catch (Exception _)
-							{
-								_coverImageFile = null;
-							}
-						}
-
 						continue;
 					}
 
@@ -347,17 +332,11 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				
 			ffmpeg.Complete += (object sender, ConversionCompleteEventArgs e) =>
 			{
-				if(!Directory.Exists(_transcodingJob.DestinationFolder))
-				{
-					Directory.CreateDirectory(_transcodingJob.DestinationFolder);
-				}
-
-				File.Move(_tempFile, destinationFile);
 				_logger.LogWarning($"Encoding complete! {CurrentFile}");
 				CleanTempData();
 				_onDoneInternal();
 				_transcodingJob.OnComplete();
-				onSuccessInternal();
+				onSuccessInternal(_tempFile);
 				_busy = false;
 			};
 
@@ -441,11 +420,6 @@ namespace net.jancerveny.sofaking.BusinessLogic
 		{
 			_logger.LogDebug($"Cleaning up the TEMP data{(keepCommand ? ", keeping the command file." : ".")}");
 			
-			if (!string.IsNullOrWhiteSpace(_coverImageFile))
-			{
-				File.Delete(_coverImageFile);
-			}
-
 			if (File.Exists(_tempFile))
 			{
 				File.Delete(_tempFile);
@@ -462,7 +436,6 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			}
 
 			CurrentFile = null;
-			_coverImageFile = null;
 			_tempFile = null;
 			TranscodingStarted = null;
 			_lastTempFileSize = null;

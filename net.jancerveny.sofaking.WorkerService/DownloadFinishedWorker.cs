@@ -198,11 +198,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			}
 
 			_logger.LogInformation($"Picking up {(queuedMovieJob.Status == MovieStatusEnum.TranscodingIncomplete ? "an incomplete" : "a queued")} job id {queuedMovieJob.Id}: {queuedMovieJob.TorrentName}");
-			var transcodingResult = await Transcode(queuedMovieJob.Id, torrent, cancellationToken);
-			if (transcodingResult?.FilesToMove?.Length > 0)
-			{
-				await MoveVideoFiles(queuedMovieJob, torrent, transcodingResult.FilesToMove);
-			}
+			_ = await Transcode(queuedMovieJob.Id, torrent, cancellationToken);
 		}
 
 		private async Task HandleCrashedTranscoding()
@@ -286,19 +282,18 @@ namespace net.jancerveny.sofaking.WorkerService
 					continue;
 				}
 
-				if(transcodingResult.FilesToMove.Length > 0)
-				{
-					await MoveVideoFiles(movieJob, torrent, transcodingResult.FilesToMove);
-				}
-
 				if (transcodingResult.Result == TranscodeResultEnum.TranscodingNotNeeded)
 				{
-					await SuccessFinishingActionAsync(torrent, movieJob);
+					if (transcodingResult?.FilesToMove?.Length > 0)
+					{
+						await MoveVideoFilesToFinishedDir(movieJob, torrent, transcodingResult.FilesToMove);
+					}
+					await MovieDownloadedSuccesfulyAsync(torrent, movieJob);
 				}
 			}
 		}
 
-		private async Task MoveVideoFiles(Movie movie, ITorrentClientTorrent torrent, string[] videoFilesToMove)
+		private async Task MoveVideoFilesToFinishedDir(Movie movie, ITorrentClientTorrent torrent, string[] videoFilesToMove, string coverImageJpg = null)
 		{
 			if (movie == null) throw new ArgumentNullException(nameof(movie));
 			if (torrent == null) throw new ArgumentNullException(nameof(torrent));
@@ -312,11 +307,43 @@ namespace net.jancerveny.sofaking.WorkerService
 				Directory.CreateDirectory(finishedMovieDirectory);
 			}
 
+			// Move existing Cover image, or download a new one if null.
+			var finishedCoverImageJpg = Path.Combine(finishedMovieDirectory, "Cover.jpg");
+			if (coverImageJpg != null && File.Exists(coverImageJpg))
+			{
+				File.Move(coverImageJpg, finishedCoverImageJpg);
+			} else
+			{
+				try
+				{
+					await Download.GetFile(movie.ImageUrl, finishedCoverImageJpg);
+				}
+				catch (Exception ex)
+				{
+					finishedCoverImageJpg = null;
+					_logger.LogError($"Could not create a Cover image. {ex.Message}", ex);
+				}
+			}
+
+			if (finishedCoverImageJpg != null)
+			{
+				await WindowsFolder.SetFolderPictureAsync(finishedCoverImageJpg);
+				File.SetAttributes(finishedCoverImageJpg, File.GetAttributes(finishedCoverImageJpg) | FileAttributes.Hidden);
+			}
+
 			try
 			{
-				foreach (var videoFile in videoFilesToMove)
+				// Here we're assuming that the  first, largest file will be the main movie file.
+				var mainMovieFile = videoFilesToMove[0];
+				var destinationFileNameWithoutExtension = Regexes.FileSystemSafeName.Replace($"{movie.Year} {movie.Title}", string.Empty);
+				File.Move(mainMovieFile, Path.Combine(finishedMovieDirectory, destinationFileNameWithoutExtension + Regexes.FileNamePattern.Match(mainMovieFile).Groups[2].Value));
+
+				if (videoFilesToMove.Length > 1)
 				{
-					File.Move(videoFile, Path.Combine(finishedMovieDirectory, Path.GetFileName(videoFile)));
+					foreach (var videoFile in videoFilesToMove.Skip(1))
+					{
+						File.Move(videoFile, Path.Combine(finishedMovieDirectory, Path.GetFileName(videoFile)));
+					}
 				}
 			}
 			catch (Exception e)
@@ -381,23 +408,6 @@ namespace net.jancerveny.sofaking.WorkerService
 			}
 		}
 
-		private async Task AddCoverImage(Movie movie)
-		{
-			if (string.IsNullOrWhiteSpace(movie.ImageUrl)) throw new ArgumentNullException(nameof(movie.ImageUrl));
-			
-			try
-			{
-				var coverImage = Path.Combine(MovieFinishedDirectory(movie), "Cover.jpg");
-				await Download.GetFile(movie.ImageUrl, coverImage);
-				await WindowsFolder.SetFolderPictureAsync(coverImage);
-				File.SetAttributes(coverImage, File.GetAttributes(coverImage) | FileAttributes.Hidden);
-			}
-			catch (Exception ex)
-			{
-				_logger.LogError($"Could not create a Cover image. {ex.Message}", ex);
-			}
-		}
-
 		// TODO: Split into Analyse and Transcode, so the Analysis part doesn't get called when run from Queued
 		private async Task<TranscodeResult> Transcode(int movieJobId, ITorrentClientTorrent torrent, CancellationToken cancellationToken)
 		{
@@ -415,6 +425,18 @@ namespace net.jancerveny.sofaking.WorkerService
 			await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.AnalysisStarted);
 			var pendingTranscodingJobs = new List<ITranscodingJob>();
 			var filesToMove = new List<string>();
+			string coverImageJpg = null;
+
+			try
+			{
+				coverImageJpg = Path.Combine(_sofakingConfiguration.TempFolder, movie.Id + "-Cover.jpg");
+				await Download.GetFile(movie.ImageUrl, coverImageJpg);
+			}
+			catch (Exception ex)
+			{
+				coverImageJpg = null;
+				_logger.LogError($"Could not download a Cover image. {ex.Message}", ex);
+			}
 
 			// Check if any files need transcoding
 			foreach (var videoFile in videoFiles)
@@ -483,9 +505,9 @@ namespace net.jancerveny.sofaking.WorkerService
 				pendingTranscodingJobs.Add(new TranscodingJob
 				{
 					SourceFile = videoFile,
-					DestinationFolder = MovieFinishedDirectory(movie),
 					Action = flags,
 					Duration = mediaInfo.Duration,
+					CoverImageJpg = coverImageJpg,
 					OnComplete = () =>
 					{
 						_logger.LogDebug($"Will delete: {videoFile}");
@@ -501,7 +523,6 @@ namespace net.jancerveny.sofaking.WorkerService
 					CancellationToken = cancellationToken,
 					Metadata = new Dictionary<FFMPEGMetadataEnum, string> {
 						{ FFMPEGMetadataEnum.title, movie.Title },
-						{ FFMPEGMetadataEnum.cover, movie.ImageUrl },
 						{ FFMPEGMetadataEnum.year, movie.Year.ToString() },
 						{ FFMPEGMetadataEnum.director, movie.Director },
 						{ FFMPEGMetadataEnum.description, movie.Description },
@@ -518,6 +539,11 @@ namespace net.jancerveny.sofaking.WorkerService
 			if (!pendingTranscodingJobs.Any())
 			{
 				_logger.LogDebug($"Transcoding not needed, no pending jobs.");
+				if(coverImageJpg != null && File.Exists(coverImageJpg))
+				{
+					File.Delete(coverImageJpg);
+				}
+
 				return new TranscodeResult(TranscodeResultEnum.TranscodingNotNeeded, filesToMove.ToArray());
 			}
 
@@ -528,7 +554,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			{
 				_logger.LogDebug($"Queuing {movie.TorrentName}");
 				await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingQueued);
-				return new TranscodeResult(TranscodeResultEnum.Queued, filesToMove.ToArray());
+				return new TranscodeResult(TranscodeResultEnum.Queued);
 			}
 
 			// Start transcoding by copying our pending tasks into the static global queue
@@ -581,14 +607,16 @@ namespace net.jancerveny.sofaking.WorkerService
 
 								var removed = _transcodingJobs.TryRemove(_transcodingJobs.First().Key, out _);
 								_logger.LogWarning($"Removing first from the queue, result: {removed}.");
-							}, async () =>
+							}, async (transcodedFile) =>
 							{
+								filesToMove.Add(transcodedFile);
 								if (_transcodingJobs.Count == 0)
 								{
 									_logger.LogDebug("All transcoding done.");
-									await SuccessFinishingActionAsync(torrent, movie); // TODO: This could be getting wrong values because of threading
-							}
-						}, cancellationToken);
+									await MoveVideoFilesToFinishedDir(movie, torrent, filesToMove.ToArray(), coverImageJpg);
+									await MovieDownloadedSuccesfulyAsync(torrent, movie); // TODO: This could be getting wrong values because of threading
+								}
+							}, cancellationToken);
 					}
 					catch (Exception e)
 					{
@@ -607,6 +635,9 @@ namespace net.jancerveny.sofaking.WorkerService
 			return new TranscodeResult(TranscodeResultEnum.Transcoding, filesToMove.ToArray());
 		}
 
+		/// <summary>
+		/// Get all video files in a directory, from the largest to the smallest. Skips banned files.
+		/// </summary>
 		private static string[] GetVideoFilesInDir(string sourcePath)
 		{
 			if(!Directory.Exists(sourcePath))
@@ -621,9 +652,11 @@ namespace net.jancerveny.sofaking.WorkerService
 				.ToArray();
 		}
 
-		public async Task SuccessFinishingActionAsync(ITorrentClientTorrent torrent, Movie movie)
+		/// <summary>
+		/// Cleanup  method to be called after succesfull download, transcoding and manipulation of files.
+		/// </summary>
+		protected async Task MovieDownloadedSuccesfulyAsync(ITorrentClientTorrent torrent, Movie movie)
 		{
-			await AddCoverImage(movie);
 			try
 			{
 				_logger.LogDebug($"Will delete: {MovieDownloadDirectory(torrent)}");

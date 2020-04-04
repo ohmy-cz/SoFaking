@@ -8,6 +8,5 @@
 	description,
 	show,
 	episode_id,
-	cover, // Custom handling! Used for cover image
 	IMDBRating
 }
