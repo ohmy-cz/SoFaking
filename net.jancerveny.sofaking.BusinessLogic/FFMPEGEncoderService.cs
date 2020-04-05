@@ -40,13 +40,9 @@ namespace net.jancerveny.sofaking.BusinessLogic
 		public string _stalledFileCandidate;
 		private const char optionalFlag = '?';
 		private static long? _lastTempFileSize;
-		/// <summary>
-		/// Constant Rate Factor (CRF)
-		/// @see https://trac.ffmpeg.org/wiki/Encode/H.264
-		/// </summary>
-		private const int _crf = 17;
 		private static readonly TimeSpan stalledCheckInterval = new TimeSpan(0, 5, 0);
 		private Action _onDoneInternal;
+		private Action<string> _onSuccessInternal;
 
 		private static class Regexes
 		{
@@ -157,6 +153,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 
 			// TODO: Find a nicer way?
 			_onDoneInternal = onDoneInternal;
+			_onSuccessInternal = onSuccessInternal;
 			_transcodingJob = transcodingJob;
 
 			cancellationToken.Register(() => {
@@ -202,17 +199,16 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			if(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo))
 			{
 				// Resize?
-				a.Append(_configuration.OutputVideoCodec + " " + (fm.MainVideoStream.HorizontalResolution > _sofakingConfiguration.MaxHorizontalVideoResolution ? $"-vf scale={_sofakingConfiguration.MaxHorizontalVideoResolution}:-2 " : string.Empty));
+				a.Append(_configuration.OutputVideoCodec + " " + (fm.MainVideoStream.HorizontalResolution > _sofakingConfiguration.MaxHorizontalVideoResolution ? $"-vf scale={_sofakingConfiguration.MaxHorizontalVideoResolution}:-2:flags=lanczos+accurate_rnd " : string.Empty));
 
-				// This seems required, although CRF should have taken priority...
+				// Make sure we have the right bitrate, important for PS4 compatibility
 				a.Append($"-b:v {_configuration.OutputVideoBitrateMbits}M ");
-
-				// Constant Rate Factor, the lower the better; 0 = lossless
-				a.Append($"-crf {_crf} ");
+				a.Append($"-maxrate {_configuration.OutputVideoBitrateMbits}M ");
+				a.Append($"-bufsize {(int)Math.Ceiling(_configuration.OutputVideoBitrateMbits/2)}M ");
 
 				// These arguments are here for improved compatibility. Level 4.0 is the lowest bandwidth required for FullHD - good for better compatibility and network streaming
 				// http://blog.mediacoderhq.com/h264-profiles-and-levels/
-				a.Append("-profile:v high -level:v 4.1 -pix_fmt yuv420p ");
+				a.Append("-profile:v high -level:v 4.2 -pix_fmt yuv420p ");
 
 				// Get the highest quality possible
 				a.Append("-preset veryslow ");
@@ -230,18 +226,10 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			a.Append($"-map {mainAudioStream.StreamId}:{mainAudioStream.StreamIndex} -c:a:{audioTrackCounter} {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewAudio) ? $"{_configuration.OutputAudioCodec} -b:a:{audioTrackCounter} {_configuration.OutputAudioBitrateMbits}M" : "copy")} ");
 			if (_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewAudio))
 			{
-				a.Append($"-metadata:s:a:{audioTrackCounter} title=\"PS4 Compatible\" ");
+				a.Append($"-metadata:s:a:{audioTrackCounter} title=\"{(mainAudioStream.Metadata?["title"] == null ? string.Empty : mainAudioStream.Metadata?["title"] + " ")}(PS4 Compatible)\" ");
 			}
 			a.Append($"-disposition:a:{audioTrackCounter} default ");
 			audioTrackCounter++;
-
-			// The English default track  is usually in a very high quality that we can't play on a PS4, but we don't want to lose
-			// So we copy it as the second track.
-			if (_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewAudio))
-			{
-				a.Append($"-map {mainAudioStream.StreamId}:{mainAudioStream.StreamIndex} -c:a:{audioTrackCounter} copy ");
-				audioTrackCounter++;
-			}
 
 			// Copy the remaining audio tracks, as long as they are in the configured array of desired languages.
 			foreach(var audioStream in fm.Streams.Where(x => x.StreamType == StreamTypeEnum.Audio  && _sofakingConfiguration.AudioLanguages.Contains(x.Language)))
@@ -251,7 +239,13 @@ namespace net.jancerveny.sofaking.BusinessLogic
 					continue;
 				}
 
-				a.Append($"-map {audioStream.StreamId}:{audioStream.StreamIndex} -c:a:{audioTrackCounter} copy ");
+				// TODO: Refactor this
+				var hasAcceptableCodec = audioStream.StreamCodec.ToLower() == "ac3" || audioStream.StreamCodec.ToLower() == "aac" || audioStream.StreamCodec.ToLower().Contains("pcm");
+				a.Append($"-map {audioStream.StreamId}:{audioStream.StreamIndex} -c:a:{audioTrackCounter} {(!hasAcceptableCodec ? $"{_configuration.OutputAudioCodec} -b:a:{audioTrackCounter} {_configuration.OutputAudioBitrateMbits}M" : "copy")} ");
+				if (!hasAcceptableCodec)
+				{
+					a.Append($"-metadata:s:a:{audioTrackCounter} title=\"{(audioStream.Metadata?["title"] == null ? string.Empty : audioStream.Metadata?["title"] + " ")}(PS4 Compatible)\" ");
+				}
 				audioTrackCounter++;
 			}
 
@@ -264,7 +258,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			// Metadata
 			// See: https://matroska.org/technical/specs/tagging/index.html
 			a.Append($"-metadata COMMENT=\"Original file name: {Path.GetFileName(CurrentFile)}\" ");
-			a.Append($"-metadata ENCODER_SETTINGS=\"V: {_configuration.OutputVideoCodec + (_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? $" -CRF {_crf}" : " (copy)")}, A:{_configuration.OutputAudioCodec}@{_configuration.OutputAudioBitrateMbits}M\" ");
+			a.Append($"-metadata ENCODER_SETTINGS=\"V: {_configuration.OutputVideoCodec + (_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewVideo) ? $"@{_configuration.OutputVideoBitrateMbits}M" : " (copy)")}, A:{_configuration.OutputAudioCodec}@{_configuration.OutputAudioBitrateMbits}M\" ");
 
 			// Cover image
 			if (!string.IsNullOrWhiteSpace(_transcodingJob.CoverImageJpg))
@@ -330,13 +324,13 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				Kill();
 			};
 				
-			ffmpeg.Complete += (object sender, ConversionCompleteEventArgs e) =>
+			ffmpeg.Complete += async (object sender, ConversionCompleteEventArgs e) =>
 			{
 				_logger.LogWarning($"Encoding complete! {CurrentFile}");
+				_transcodingJob.OnComplete();
+				await Task.Run(() => _onSuccessInternal(_tempFile));
 				CleanTempData();
 				_onDoneInternal();
-				_transcodingJob.OnComplete();
-				onSuccessInternal(_tempFile);
 				_busy = false;
 			};
 

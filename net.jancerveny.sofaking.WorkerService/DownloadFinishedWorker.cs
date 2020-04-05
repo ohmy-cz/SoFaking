@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Hosting;
+﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using net.jancerveny.sofaking.BusinessLogic;
 using net.jancerveny.sofaking.BusinessLogic.Interfaces;
@@ -25,9 +25,9 @@ namespace net.jancerveny.sofaking.WorkerService
 	{
 		private static class Regexes
 		{
-			public static Regex FileSystemSafeName => new Regex(@"[^\sa-z0-9_-]+", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+			public static Regex FileSystemSafeName => new Regex(@"[^\sa-z0-9_-ěëéèščřžýůüáæäåøöíï]+", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
 			public static Regex VideoFileTypes => new Regex(@"(.+(\.mkv|\.avi|\.mp4))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-			public static Regex FileNamePattern => new Regex(@"^(.+)(\.[a-z]{3})$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+			public static Regex FileNamePattern => new Regex(@"^(?<FileName>.+)(?<FileExtension>\.[a-z]{3})$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 		}
 		private readonly IHttpClientFactory _clientFactory;
 		private readonly ILogger<DownloadFinishedWorker> _logger;
@@ -264,7 +264,7 @@ namespace net.jancerveny.sofaking.WorkerService
 
 					if (File.Exists(downloadFile))
 					{
-						File.Move(downloadFile, Path.Combine(downloadDirectory, Regexes.FileSystemSafeName.Replace(movieJob.Title, string.Empty) + torrentFileNameExtension));
+						File.Move(downloadFile, Path.Combine(downloadDirectory, Regexes.FileSystemSafeName.Replace($"{movieJob.Year} {movieJob.Title}", string.Empty) + torrentFileNameExtension));
 					}
 				}
 
@@ -290,70 +290,6 @@ namespace net.jancerveny.sofaking.WorkerService
 					}
 					await MovieDownloadedSuccesfulyAsync(torrent, movieJob);
 				}
-			}
-		}
-
-		private async Task MoveVideoFilesToFinishedDir(Movie movie, ITorrentClientTorrent torrent, string[] videoFilesToMove, string coverImageJpg = null)
-		{
-			if (movie == null) throw new ArgumentNullException(nameof(movie));
-			if (torrent == null) throw new ArgumentNullException(nameof(torrent));
-			if (videoFilesToMove == null || videoFilesToMove.Length == 0) throw new ArgumentNullException(nameof(videoFilesToMove));
-			
-			_logger.LogInformation($"Moving video files which didn't need transcoding:\n{string.Join("\n ", videoFilesToMove)}");
-
-			var finishedMovieDirectory = MovieFinishedDirectory(movie);
-			if (!Directory.Exists(finishedMovieDirectory))
-			{
-				Directory.CreateDirectory(finishedMovieDirectory);
-			}
-
-			// Move existing Cover image, or download a new one if null.
-			var finishedCoverImageJpg = Path.Combine(finishedMovieDirectory, "Cover.jpg");
-			if (coverImageJpg != null && File.Exists(coverImageJpg))
-			{
-				File.Move(coverImageJpg, finishedCoverImageJpg);
-			} else
-			{
-				try
-				{
-					await Download.GetFile(movie.ImageUrl, finishedCoverImageJpg);
-				}
-				catch (Exception ex)
-				{
-					finishedCoverImageJpg = null;
-					_logger.LogError($"Could not create a Cover image. {ex.Message}", ex);
-				}
-			}
-
-			if (finishedCoverImageJpg != null)
-			{
-				await WindowsFolder.SetFolderPictureAsync(finishedCoverImageJpg);
-				File.SetAttributes(finishedCoverImageJpg, File.GetAttributes(finishedCoverImageJpg) | FileAttributes.Hidden);
-			}
-
-			try
-			{
-				// Here we're assuming that the  first, largest file will be the main movie file.
-				var mainMovieFile = videoFilesToMove[0];
-				var destinationFileNameWithoutExtension = Regexes.FileSystemSafeName.Replace($"{movie.Year} {movie.Title}", string.Empty);
-				File.Move(mainMovieFile, Path.Combine(finishedMovieDirectory, destinationFileNameWithoutExtension + Regexes.FileNamePattern.Match(mainMovieFile).Groups[2].Value));
-
-				if (videoFilesToMove.Length > 1)
-				{
-					foreach (var videoFile in videoFilesToMove.Skip(1))
-					{
-						File.Move(videoFile, Path.Combine(finishedMovieDirectory, Path.GetFileName(videoFile)));
-					}
-				}
-			}
-			catch (Exception e)
-			{
-				await _movieService.SetMovieStatus(movie.Id, MovieStatusEnum.FileInUse);
-				_logger.LogDebug($"Will delete torrent: {torrent.Id}");
-#if RELEASE
-				await _torrentClient.RemoveTorrent(torrent.Id);
-#endif
-				_logger.LogError($"Could not move the final downloaded files: {e.Message}. Is FFMPEG still running?", e);
 			}
 		}
 
@@ -425,18 +361,6 @@ namespace net.jancerveny.sofaking.WorkerService
 			await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.AnalysisStarted);
 			var pendingTranscodingJobs = new List<ITranscodingJob>();
 			var filesToMove = new List<string>();
-			string coverImageJpg = null;
-
-			try
-			{
-				coverImageJpg = Path.Combine(_sofakingConfiguration.TempFolder, movie.Id + "-Cover.jpg");
-				await Download.GetFile(movie.ImageUrl, coverImageJpg);
-			}
-			catch (Exception ex)
-			{
-				coverImageJpg = null;
-				_logger.LogError($"Could not download a Cover image. {ex.Message}", ex);
-			}
 
 			// Check if any files need transcoding
 			foreach (var videoFile in videoFiles)
@@ -507,7 +431,6 @@ namespace net.jancerveny.sofaking.WorkerService
 					SourceFile = videoFile,
 					Action = flags,
 					Duration = mediaInfo.Duration,
-					CoverImageJpg = coverImageJpg,
 					OnComplete = () =>
 					{
 						_logger.LogDebug($"Will delete: {videoFile}");
@@ -539,11 +462,6 @@ namespace net.jancerveny.sofaking.WorkerService
 			if (!pendingTranscodingJobs.Any())
 			{
 				_logger.LogDebug($"Transcoding not needed, no pending jobs.");
-				if(coverImageJpg != null && File.Exists(coverImageJpg))
-				{
-					File.Delete(coverImageJpg);
-				}
-
 				return new TranscodeResult(TranscodeResultEnum.TranscodingNotNeeded, filesToMove.ToArray());
 			}
 
@@ -555,6 +473,20 @@ namespace net.jancerveny.sofaking.WorkerService
 				_logger.LogDebug($"Queuing {movie.TorrentName}");
 				await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingQueued);
 				return new TranscodeResult(TranscodeResultEnum.Queued);
+			}
+
+			// Set the a cover image for the first file (the largest = the movie), so it will be attached to the output file.
+			string coverImageJpg = null;
+			try
+			{
+				coverImageJpg = Path.Combine(_sofakingConfiguration.TempFolder, movie.Id + "-Cover.jpg");
+				await Download.GetFile(movie.ImageUrl, coverImageJpg);
+				pendingTranscodingJobs[0].CoverImageJpg = coverImageJpg;
+			}
+			catch (Exception ex)
+			{
+				coverImageJpg = null;
+				_logger.LogError($"Could not download a Cover image. {ex.Message}", ex);
 			}
 
 			// Start transcoding by copying our pending tasks into the static global queue
@@ -609,10 +541,11 @@ namespace net.jancerveny.sofaking.WorkerService
 								_logger.LogWarning($"Removing first from the queue, result: {removed}.");
 							}, async (transcodedFile) =>
 							{
+								_logger.LogDebug($"Adding {transcodedFile} to the list of files to move ({filesToMove.Count()})");
 								filesToMove.Add(transcodedFile);
 								if (_transcodingJobs.Count == 0)
 								{
-									_logger.LogDebug("All transcoding done.");
+									_logger.LogWarning("All transcoding done.");
 									await MoveVideoFilesToFinishedDir(movie, torrent, filesToMove.ToArray(), coverImageJpg);
 									await MovieDownloadedSuccesfulyAsync(torrent, movie); // TODO: This could be getting wrong values because of threading
 								}
@@ -633,6 +566,77 @@ namespace net.jancerveny.sofaking.WorkerService
 			});
 
 			return new TranscodeResult(TranscodeResultEnum.Transcoding, filesToMove.ToArray());
+		}
+
+		private async Task MoveVideoFilesToFinishedDir(Movie movie, ITorrentClientTorrent torrent, string[] videoFilesToMove, string coverImageJpg = null)
+		{
+			if (movie == null) throw new ArgumentNullException(nameof(movie));
+			if (torrent == null) throw new ArgumentNullException(nameof(torrent));
+			if (videoFilesToMove == null || !videoFilesToMove.Any())
+			{
+				_logger.LogError($"Cannot move video files: {nameof(videoFilesToMove)} was empty.");
+				throw new ArgumentNullException(nameof(videoFilesToMove));
+			}
+
+			_logger.LogWarning($"Moving video files:\n{string.Join("\n ", videoFilesToMove)}");
+
+			var finishedMovieDirectory = MovieFinishedDirectory(movie);
+			if (!Directory.Exists(finishedMovieDirectory))
+			{
+				Directory.CreateDirectory(finishedMovieDirectory);
+			}
+
+			// Move existing Cover image, or download a new one if null.
+			var finishedCoverImageJpg = Path.Combine(finishedMovieDirectory, "Cover.jpg");
+			if (coverImageJpg != null && File.Exists(coverImageJpg))
+			{
+				File.Move(coverImageJpg, finishedCoverImageJpg);
+			}
+			else
+			{
+				try
+				{
+					await Download.GetFile(movie.ImageUrl, finishedCoverImageJpg);
+				}
+				catch (Exception ex)
+				{
+					finishedCoverImageJpg = null;
+					_logger.LogError($"Could not create a Cover image. {ex.Message}", ex);
+				}
+			}
+
+			if (finishedCoverImageJpg != null)
+			{
+				await WindowsFolder.SetFolderPictureAsync(finishedCoverImageJpg);
+				File.SetAttributes(finishedCoverImageJpg, File.GetAttributes(finishedCoverImageJpg) | FileAttributes.Hidden);
+			}
+
+			try
+			{
+				// Here we're assuming that the  first, largest file will be the main movie file.
+				var mainMovieFile = videoFilesToMove[0];
+				var destinationFileNameWithoutExtension = Regexes.FileSystemSafeName.Replace($"{movie.Year} {movie.Title}", string.Empty);
+				_logger.LogWarning($"Moving MAIN movie file: {mainMovieFile} to {Path.Combine(finishedMovieDirectory, destinationFileNameWithoutExtension + Regexes.FileNamePattern.Match(mainMovieFile).Groups["FileExtension"].Value)}");
+				File.Move(mainMovieFile, Path.Combine(finishedMovieDirectory, destinationFileNameWithoutExtension + Regexes.FileNamePattern.Match(mainMovieFile).Groups["FileExtension"].Value));
+
+				if (videoFilesToMove.Length > 1)
+				{
+					foreach (var videoFile in videoFilesToMove.Skip(1))
+					{
+						_logger.LogInformation($"Moving video file: {videoFile} to {Path.Combine(finishedMovieDirectory, Path.GetFileName(videoFile))}");
+						File.Move(videoFile, Path.Combine(finishedMovieDirectory, Path.GetFileName(videoFile)));
+					}
+				}
+			}
+			catch (Exception e)
+			{
+				await _movieService.SetMovieStatus(movie.Id, MovieStatusEnum.FileInUse);
+				_logger.LogDebug($"Will delete torrent: {torrent.Id}");
+#if RELEASE
+				await _torrentClient.RemoveTorrent(torrent.Id);
+#endif
+				_logger.LogInformation($"Could not move the final downloaded files: {e.Message}. Is FFMPEG still running?", e);
+			}
 		}
 
 		/// <summary>
@@ -737,7 +741,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			var fileName = Regexes.FileNamePattern.Match(torrent.Name);
 			if (fileName.Success)
 			{
-				torrentFileNameExtension = fileName.Groups[2].Value;
+				torrentFileNameExtension = fileName.Groups["FileExtension"].Value;
 			}
 
 			return MovieDownloadDirectory(torrent);
@@ -746,7 +750,7 @@ namespace net.jancerveny.sofaking.WorkerService
 		private string MovieDownloadDirectory(ITorrentClientTorrent torrent)
 		{
 			var fileName = Regexes.FileNamePattern.Match(torrent.Name);
-			return Path.Combine(_configuration.MoviesDownloadDir, fileName.Success ? fileName.Groups[1].Value : torrent.Name);
+			return Path.Combine(_configuration.MoviesDownloadDir, fileName.Success ? fileName.Groups["FileName"].Value : torrent.Name);
 		}
 
 		private string MovieFinishedDirectory(Movie movie) => Path.Combine(_configuration.MoviesFinishedDir, Regexes.FileSystemSafeName.Replace(movie.Title, string.Empty));
