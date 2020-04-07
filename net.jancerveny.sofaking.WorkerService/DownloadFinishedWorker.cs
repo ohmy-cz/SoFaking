@@ -31,29 +31,33 @@ namespace net.jancerveny.sofaking.WorkerService
 		}
 		private readonly IHttpClientFactory _clientFactory;
 		private readonly ILogger<DownloadFinishedWorker> _logger;
+		private readonly ILogger<FFMPEGEncoderService> _loggerEnc;
 		private readonly DownloadFinishedWorkerConfiguration _configuration;
 		private readonly SoFakingConfiguration _sofakingConfiguration;
+		private readonly EncoderConfiguration _encoderConfiguration;
 		private readonly MovieService _movieService;
 		private readonly ITorrentClientService _torrentClient;
-		private readonly IEncoderService _encoderService;
+		protected static IEncoderService _encoderTranscodingInstance;
 		private static ConcurrentDictionary<int, ITranscodingJob> _transcodingJobs = new ConcurrentDictionary<int, ITranscodingJob>();
 
-		public DownloadFinishedWorker(ILogger<DownloadFinishedWorker> logger, IHttpClientFactory clientFactory, DownloadFinishedWorkerConfiguration configuration, MovieService movieService, ITorrentClientService torrentClient, IEncoderService encoderService, SoFakingConfiguration sofakingConfiguration)
+		public DownloadFinishedWorker(ILogger<DownloadFinishedWorker> logger, ILogger<FFMPEGEncoderService> loggerEnc, IHttpClientFactory clientFactory, DownloadFinishedWorkerConfiguration configuration, MovieService movieService, ITorrentClientService torrentClient,/* IEncoderService encoderService,*/ SoFakingConfiguration sofakingConfiguration, EncoderConfiguration encoderConfiguration)
 		{
 			if (clientFactory == null) throw new ArgumentNullException(nameof(clientFactory));
 			if (movieService == null) throw new ArgumentNullException(nameof(movieService));
 			if (configuration == null) throw new ArgumentNullException(nameof(configuration));
 			if (logger == null) throw new ArgumentNullException(nameof(logger));
+			if (loggerEnc == null) throw new ArgumentNullException(nameof(loggerEnc));
 			if (torrentClient == null) throw new ArgumentNullException(nameof(torrentClient));
-			if (encoderService == null) throw new ArgumentNullException(nameof(encoderService));
+			if (encoderConfiguration == null) throw new ArgumentNullException(nameof(encoderConfiguration));
 			if (sofakingConfiguration == null) throw new ArgumentNullException(nameof(sofakingConfiguration));
 			_sofakingConfiguration = sofakingConfiguration;
 			_clientFactory = clientFactory;
 			_movieService = movieService;
 			_configuration = configuration;
 			_logger = logger;
+			_loggerEnc = loggerEnc;
 			_torrentClient = torrentClient;
-			_encoderService = encoderService;
+			_encoderConfiguration = encoderConfiguration;
 		}
 
 		protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -79,7 +83,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			while (!stoppingToken.IsCancellationRequested)
 			{
 				_logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
-				_logger.LogInformation($"Transcoding: {_encoderService.CurrentFile ?? "Nothing"}");
+				_logger.LogInformation($"Transcoding: {_encoderTranscodingInstance?.CurrentFile ?? "Nothing"}");
 				IReadOnlyList<ITorrentClientTorrent> torrents;
 
 				try
@@ -165,11 +169,55 @@ namespace net.jancerveny.sofaking.WorkerService
 			}
 		}
 
+		/// <summary>
+		/// Cleanup  method to be called after succesfull download, transcoding and manipulation of files.
+		/// </summary>
+		protected async Task MovieDownloadedSuccesfulyAsync(ITorrentClientTorrent torrent, Movie movie)
+		{
+			try
+			{
+				_logger.LogDebug($"Will delete: {MovieDownloadDirectory(torrent)}");
+#if RELEASE
+				Directory.Delete(MovieDownloadDirectory(torrent), true);
+#endif
+			}
+			catch (IOException e)
+			{
+				await _movieService.SetMovieStatus(movie.Id, MovieStatusEnum.CouldNotDeleteDownloadDirectory);
+			}
+			_logger.LogDebug($"Will remove torrent: {torrent.Id}");
+#if RELEASE
+			await _torrentClient.RemoveTorrent(torrent.Id);
+#endif
+			await _movieService.SetMovieStatus(movie.Id, MovieStatusEnum.Finished);
+
+			// Inform Minidlna or other services about the new download.
+			if (!string.IsNullOrWhiteSpace(_configuration.FinishedCommandExecutable))
+			{
+				var process = new Process()
+				{
+					StartInfo = new ProcessStartInfo
+					{
+						FileName = _configuration.FinishedCommandExecutable,
+						Arguments = _configuration.FinishedCommandArguments,
+						UseShellExecute = false,
+						CreateNoWindow = true
+					}
+				};
+
+				await Task.Run(() =>
+				{
+					process.Start();
+					process.WaitForExit();
+				});
+			}
+		}
+
 		private async Task HandleQueuedTranscoding(IReadOnlyList<ITorrentClientTorrent> torrents, CancellationToken cancellationToken)
 		{
-			if(_encoderService.CurrentFile != null)
+			if(_encoderTranscodingInstance != null)
 			{
-				_logger.LogInformation($"Skipping queued jobs: Transcoding of {_encoderService.CurrentFile} running.");
+				_logger.LogInformation($"Skipping queued jobs: Transcoding of {_encoderTranscodingInstance.CurrentFile} running.");
 				return;
 			}
 
@@ -369,10 +417,13 @@ namespace net.jancerveny.sofaking.WorkerService
 				_logger.LogInformation($"Analyzing {Path.GetFileName(videoFile)}");
 				try
 				{
-					mediaInfo = await _encoderService.GetMediaInfo(videoFile);
+					using (var encoder = new FFMPEGEncoderService(_loggerEnc, _encoderConfiguration, _sofakingConfiguration))
+					{
+						mediaInfo = await encoder.GetMediaInfo(videoFile);
+					}
 				}
 				catch (Exception ex){
-					_logger.LogError($"{nameof(_encoderService.GetMediaInfo)} failed with: {ex.Message}", ex);
+					_logger.LogError($"{nameof(FFMPEGEncoderService.GetMediaInfo)} failed with: {ex.Message}", ex);
 				}
 
 				if(mediaInfo == null)
@@ -431,18 +482,6 @@ namespace net.jancerveny.sofaking.WorkerService
 					SourceFile = videoFile,
 					Action = flags,
 					Duration = mediaInfo.Duration,
-					OnComplete = () =>
-					{
-						_logger.LogDebug($"Will delete: {videoFile}");
-#if RELEASE
-						File.Delete(videoFile);
-#endif
-					},
-					OnError = async () =>
-					{
-						_logger.LogError($"Transcoding had some error");
-						await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingError);
-					},
 					CancellationToken = cancellationToken,
 					Metadata = new Dictionary<FFMPEGMetadataEnum, string> {
 						{ FFMPEGMetadataEnum.title, movie.Title },
@@ -516,40 +555,78 @@ namespace net.jancerveny.sofaking.WorkerService
 				}
 			}
 
-			// Get the first job from the stack, then drop it
+			// Get the first job from the stack, then drop it when done
 			_ = Task.Run(async () =>
 			{
 				while (_transcodingJobs.Any() && _transcodingJobs.TryGetValue(_transcodingJobs.First().Key, out var transcodingJob))
 				{
-					if (_encoderService.Busy || transcodingJob.SourceFile == _encoderService.CurrentFile)
+					if(_encoderTranscodingInstance != null)
 					{
 						continue;
 					}
 
 					try
 					{
-						_logger.LogDebug($"Trying to start: {transcodingJob.SourceFile}");
-						await _encoderService.StartTranscodingAsync(transcodingJob, null, () =>
-							{
-								if (!_transcodingJobs.Any())
-								{
-									_logger.LogDebug("No transcoding jobs left to remove");
-									return;
-								}
+						// Do this as the first thing, so no other encoding gets started
+						_encoderTranscodingInstance = new FFMPEGEncoderService(_loggerEnc, _encoderConfiguration, _sofakingConfiguration);
+						_logger.LogDebug($"Preparing transcoding of {transcodingJob.SourceFile}");
 
-								var removed = _transcodingJobs.TryRemove(_transcodingJobs.First().Key, out _);
-								_logger.LogWarning($"Removing first from the queue, result: {removed}.");
-							}, async (transcodedFile) =>
+						Action FirstOut = () => {
+							if (!_transcodingJobs.Any())
 							{
-								_logger.LogDebug($"Adding {transcodedFile} to the list of files to move ({filesToMove.Count()})");
-								filesToMove.Add(transcodedFile);
-								if (_transcodingJobs.Count == 0)
-								{
-									_logger.LogWarning("All transcoding done.");
-									await MoveVideoFilesToFinishedDir(movie, torrent, filesToMove.ToArray(), coverImageJpg);
-									await MovieDownloadedSuccesfulyAsync(torrent, movie); // TODO: This could be getting wrong values because of threading
-								}
-							}, cancellationToken);
+								_logger.LogDebug("No transcoding jobs left to remove");
+								return;
+							}
+
+							var removed = _transcodingJobs.TryRemove(_transcodingJobs.First().Key, out _);
+							_logger.LogWarning($"Removing first from the queue, result: {removed}.");
+						};
+
+						// TODO: Use a factory
+						_encoderTranscodingInstance.OnStart += (object sender, EventArgs e) => {
+							_logger.LogDebug("Transcoding started");
+						};
+
+						_encoderTranscodingInstance.OnProgress += (object sender, EncodingProgressEventArgs e) => {
+							_logger.LogDebug($"Transcoding progress: {e.ProgressPercent:0.##}%");
+						};
+
+						_encoderTranscodingInstance.OnError += (object sender, EncodingErrorEventArgs e) => {
+							FirstOut();
+							_encoderTranscodingInstance.Dispose();
+							_encoderTranscodingInstance = null;
+
+							_logger.LogDebug($"Transcoding failed: {e.Error}");
+						};
+
+						_encoderTranscodingInstance.OnCancelled += (object sender, EventArgs e) => {
+							FirstOut();
+							_encoderTranscodingInstance.Dispose();
+							_encoderTranscodingInstance = null;
+
+							_logger.LogDebug("Transcoding cancelled");
+						};
+
+						_encoderTranscodingInstance.OnSuccess += async (object sender, EncodingSuccessEventArgs e) => {
+							FirstOut();
+
+							_logger.LogWarning($"Adding {e.FinishedFile} to the list of files to move ({filesToMove.Count()})");
+							filesToMove.Add(e.FinishedFile);
+
+							if (_transcodingJobs.Count == 0)
+							{
+								_logger.LogWarning("All transcoding done.");
+								await MoveVideoFilesToFinishedDir(movie, torrent, filesToMove.ToArray(), coverImageJpg);
+								await MovieDownloadedSuccesfulyAsync(torrent, movie);
+							}
+
+							// Do this as the last thing, so no other encoding gets started
+							_encoderTranscodingInstance.Dispose();
+							_encoderTranscodingInstance = null;
+						};
+
+						_logger.LogWarning($"Starting transcoding of {transcodingJob.SourceFile}");
+						await _encoderTranscodingInstance.StartTranscodingAsync(transcodingJob, cancellationToken);
 					}
 					catch (Exception e)
 					{
@@ -561,6 +638,9 @@ namespace net.jancerveny.sofaking.WorkerService
 
 						await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingError);
 						_logger.LogError(e.Message);
+
+						_encoderTranscodingInstance.DisposeAndKeepFiles();
+						_encoderTranscodingInstance = null;
 					}
 				}
 			});
@@ -656,49 +736,6 @@ namespace net.jancerveny.sofaking.WorkerService
 				.ToArray();
 		}
 
-		/// <summary>
-		/// Cleanup  method to be called after succesfull download, transcoding and manipulation of files.
-		/// </summary>
-		protected async Task MovieDownloadedSuccesfulyAsync(ITorrentClientTorrent torrent, Movie movie)
-		{
-			try
-			{
-				_logger.LogDebug($"Will delete: {MovieDownloadDirectory(torrent)}");
-#if RELEASE
-				Directory.Delete(MovieDownloadDirectory(torrent), true);
-#endif
-			} catch(IOException e)
-			{
-				await _movieService.SetMovieStatus(movie.Id, MovieStatusEnum.CouldNotDeleteDownloadDirectory);
-			}
-			_logger.LogDebug($"Will remove torrent: {torrent.Id}");
-#if RELEASE
-			await _torrentClient.RemoveTorrent(torrent.Id);
-#endif
-			await _movieService.SetMovieStatus(movie.Id, MovieStatusEnum.Finished);
-
-			// Inform Minidlna or other services about the new download.
-			if(!string.IsNullOrWhiteSpace(_configuration.FinishedCommandExecutable))
-			{
-				var process = new Process()
-				{
-					StartInfo = new ProcessStartInfo
-					{
-						FileName = _configuration.FinishedCommandExecutable,
-						Arguments = _configuration.FinishedCommandArguments,
-						UseShellExecute = false,
-						CreateNoWindow = true
-					}
-				};
-
-				await Task.Run(() =>
-				{
-					process.Start();
-					process.WaitForExit();
-				});
-			}
-		}
-
 		private bool HasAcceptableVideo(IMediaInfo mediaInfo)
 		{
 			if (_configuration.AcceptedVideoCodecs == null) throw new ArgumentNullException(nameof(_configuration.AcceptedVideoCodecs));
@@ -721,7 +758,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			var acceptableSize = mediaInfo.FileInfo.Length > (_sofakingConfiguration.MaxSizeGb * 1024 * 1024);
 			// TODO: Fixing getting the video bitrate right would speed up the program significantly.
 			// Unfortunately, FFMPEG can't return bitrate of only the video stream. So we will ONLY stream copy if video and all the audio streams combined have a lower bitrate than level 4.2 h264 video bitrate compatible with PS4 (6,25Mbit/s)
-			var acceptableBitrate = (mediaInfo.AVBitrateKbs == null || mediaInfo.AVBitrateKbs <= _encoderService.TargetVideoBitrateKbs);
+			var acceptableBitrate = (mediaInfo.AVBitrateKbs == null || mediaInfo.AVBitrateKbs <= TargetVideoBitrateKbs);
 
 			return acceptableCodec && acceptableResolution && acceptableSize && acceptableBitrate;
 		}
@@ -754,5 +791,12 @@ namespace net.jancerveny.sofaking.WorkerService
 		}
 
 		private string MovieFinishedDirectory(Movie movie) => Path.Combine(_configuration.MoviesFinishedDir, Regexes.FileSystemSafeName.Replace(movie.Title, string.Empty));
+
+		private int TargetVideoBitrateKbs => (int)(_encoderConfiguration.OutputVideoBitrateMbits) * 1024;
+
+		/// <summary>
+		/// Compound bitrate for video and audio
+		/// </summary>
+		private int TargetAVBitrateKbs => (int)(_encoderConfiguration.OutputVideoBitrateMbits + _encoderConfiguration.OutputAudioBitrateMbits) * 1024;
 	}
 }

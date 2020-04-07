@@ -9,8 +9,8 @@ namespace net.jancerveny.sofaking.BusinessLogic.Models
 	{
 		public string SourceFile { get; set; }
 		public EncodingTargetFlags Action { get; set; }
-		public Action OnComplete { get; set; }
-		public Action OnError { get; set; }
+		//public Action OnComplete { get; set; }
+		//public Action OnError { get; set; }
 		public CancellationToken CancellationToken { get; set; }
 		public Dictionary<FFMPEGMetadataEnum, string> Metadata { get; set; }
 		public TimeSpan Duration { get; set; }

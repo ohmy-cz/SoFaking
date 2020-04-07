@@ -8,8 +8,8 @@ namespace net.jancerveny.sofaking.BusinessLogic.Interfaces
 	{
 		string SourceFile { get; set; }
 		EncodingTargetFlags Action { get; set; }
-		Action OnComplete { get; set; }
-		Action OnError { get; set; } 
+		//Action OnComplete { get; set; }
+		//Action OnError { get; set; } 
 		CancellationToken CancellationToken { get; set; }
 		Dictionary<FFMPEGMetadataEnum, string> Metadata { get; set; }
 		TimeSpan Duration { get; set; }

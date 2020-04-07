@@ -5,7 +5,6 @@ using net.jancerveny.sofaking.BusinessLogic.Exceptions;
 using net.jancerveny.sofaking.BusinessLogic.Interfaces;
 using net.jancerveny.sofaking.BusinessLogic.Models;
 using net.jancerveny.sofaking.Common.Models;
-using net.jancerveny.sofaking.Common.Utils;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -20,6 +19,15 @@ namespace net.jancerveny.sofaking.BusinessLogic
 {
 	public class FFMPEGEncoderService : IEncoderService
 	{
+		public string CurrentFile { get { return _transcodingJob.SourceFile; } }
+		public bool Busy { get { return _busy; } }
+		public DateTime? TranscodingStarted { get; private set; }
+		public event EventHandler<EventArgs> OnStart;
+		public event EventHandler<EventArgs> OnCancelled;
+		public event EventHandler<EncodingProgressEventArgs> OnProgress;
+		public event EventHandler<EncodingSuccessEventArgs> OnSuccess;
+		public event EventHandler<EncodingErrorEventArgs> OnError;
+		public string _stalledFileCandidate;
 		private readonly ILogger<FFMPEGEncoderService> _logger;
 		private readonly EncoderConfiguration _configuration;
 		private readonly SoFakingConfiguration _sofakingConfiguration;
@@ -29,27 +37,11 @@ namespace net.jancerveny.sofaking.BusinessLogic
 		private ITranscodingJob _transcodingJob;
 		private string _shFile;
 		private string _batFile;
-		public int TargetVideoBitrateKbs { get { return (int)(_configuration.OutputVideoBitrateMbits) * 1024; } }
-		/// <summary>
-		/// Compound bitrate for video and audio
-		/// </summary>
-		public int TargetAVBitrateKbs { get { return (int)(_configuration.OutputVideoBitrateMbits + _configuration.OutputAudioBitrateMbits) * 1024; } }
-		public string CurrentFile { get; private set; }
-		public bool Busy { get { return _busy; } }
-		public DateTime? TranscodingStarted { get; private set; }
-		public string _stalledFileCandidate;
+		private bool disposed = false;
+		private bool keepFiles = false;
 		private const char optionalFlag = '?';
 		private static long? _lastTempFileSize;
 		private static readonly TimeSpan stalledCheckInterval = new TimeSpan(0, 5, 0);
-		private Action _onDoneInternal;
-		private Action<string> _onSuccessInternal;
-
-		private static class Regexes
-		{
-			public static Regex FFMPEGBasicInfo => new Regex(@"^\s{2}Duration:\s(?<Duration>.+),\sstart\:\s(?<Start>.+),\sbitrate\:\s(?<Bitrate>\d+)\skb\/s", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Compiled |  RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(5));
-			public static Regex FFMPEGStreams => new Regex(@"Stream\s#(?<StreamId>\d):(?<StreamIndex>\d)(?:\((?<Language>\w{3})\))?:\s(?<StreamType>\w+):\s(?<StreamCodec>.+?)(?:,\s|$)(?<StreamDetails>.+)?$(?:\s*Metadata:(?<MetaData>(?s).+?(?=$\s{5}\w|$\s\w)))?", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(5));
-			public static Regex FFMPEGMetadata => new Regex(@"^\s*(?<Key>[^\s]+)\s*:\s(?<Value>.+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture | RegexOptions.Multiline);
-		}
 
 		public FFMPEGEncoderService(ILogger<FFMPEGEncoderService> logger, EncoderConfiguration configuration, SoFakingConfiguration sofakingConfiguration)
 		{
@@ -58,41 +50,6 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			_sofakingConfiguration = sofakingConfiguration;
 
 			SetCancellationToken();
-			StallMonitor();
-		}
-
-		/// <summary>
-		/// Reset cancellation token source, which is originally only intended to be used once
-		/// </summary>
-		private void SetCancellationToken()
-		{
-			_cancellationTokenSource = new CancellationTokenSource();
-			_cancellationTokenSource.Token.Register(() => {
-				CleanTempData(true);
-
-				if (_onDoneInternal == null)
-				{
-					_logger.LogWarning($"No {nameof(_onDoneInternal)} callback set!");
-				}
-				else
-				{
-					_onDoneInternal.Invoke();
-				}
-
-				if (_transcodingJob?.OnError == null)
-				{
-					_logger.LogWarning($"No {nameof(_transcodingJob.OnError)} callback set!");
-				}
-				else
-				{
-					_transcodingJob.OnError.Invoke();
-				}
-
-				_busy = false;
-				_logger.LogInformation("Encoding cancelled");
-				_cancellationTokenSource = new CancellationTokenSource();
-				_cancellationTokenSource.Token.Register(() => SetCancellationToken());
-			});
 		}
 
 		public async Task<IMediaInfo> GetMediaInfo(string filePath)
@@ -138,7 +95,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			};
 		}
 
-		public async Task StartTranscodingAsync(ITranscodingJob transcodingJob, Action onStart, Action onDoneInternal, Action<string> onSuccessInternal, CancellationToken cancellationToken = default)
+		public async Task StartTranscodingAsync(ITranscodingJob transcodingJob, CancellationToken cancellationToken = default)
 		{
 			if (!File.Exists(transcodingJob.SourceFile))
 			{
@@ -151,17 +108,12 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				return;
 			}
 
-			// TODO: Find a nicer way?
-			_onDoneInternal = onDoneInternal;
-			_onSuccessInternal = onSuccessInternal;
-			_transcodingJob = transcodingJob;
-
 			cancellationToken.Register(() => {
 				_logger.LogDebug("Encoder cancelled from the outside");
 				Kill();
 			});
 
-			CurrentFile = _transcodingJob.SourceFile;
+			_transcodingJob = transcodingJob;
 			if (_transcodingJob.Action == EncodingTargetFlags.None)
 			{
 				throw new Exception("No transcoding action selected");
@@ -226,7 +178,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			a.Append($"-map {mainAudioStream.StreamId}:{mainAudioStream.StreamIndex} -c:a:{audioTrackCounter} {(_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewAudio) ? $"{_configuration.OutputAudioCodec} -b:a:{audioTrackCounter} {_configuration.OutputAudioBitrateMbits}M" : "copy")} ");
 			if (_transcodingJob.Action.HasFlag(EncodingTargetFlags.NeedsNewAudio))
 			{
-				a.Append($"-metadata:s:a:{audioTrackCounter} title=\"{(mainAudioStream.Metadata?["title"] == null ? string.Empty : mainAudioStream.Metadata?["title"] + " ")}(PS4 Compatible)\" ");
+				a.Append($"-metadata:s:a:{audioTrackCounter} title=\"{(!mainAudioStream.Metadata.ContainsKey("title") ? string.Empty : mainAudioStream.Metadata?["title"] + " ")}(PS4 Compatible)\" ");
 			}
 			a.Append($"-disposition:a:{audioTrackCounter} default ");
 			audioTrackCounter++;
@@ -244,7 +196,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				a.Append($"-map {audioStream.StreamId}:{audioStream.StreamIndex} -c:a:{audioTrackCounter} {(!hasAcceptableCodec ? $"{_configuration.OutputAudioCodec} -b:a:{audioTrackCounter} {_configuration.OutputAudioBitrateMbits}M" : "copy")} ");
 				if (!hasAcceptableCodec)
 				{
-					a.Append($"-metadata:s:a:{audioTrackCounter} title=\"{(audioStream.Metadata?["title"] == null ? string.Empty : audioStream.Metadata?["title"] + " ")}(PS4 Compatible)\" ");
+					a.Append($"-metadata:s:a:{audioTrackCounter} title=\"{(!audioStream.Metadata.ContainsKey("title") ? string.Empty : audioStream.Metadata["title"] + " ")}(PS4 Compatible)\" ");
 				}
 				audioTrackCounter++;
 			}
@@ -316,21 +268,36 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			_logger.LogDebug("Setting up events");
 			ffmpeg.Progress += (object sender, ConversionProgressEventArgs e) =>
 			{
-				_logger.LogDebug($"Progress: {(transcodingJob.Duration.Ticks == 0 ? "N/A" : $"{(((double)e.ProcessedDuration.Ticks / (double)transcodingJob.Duration.Ticks) * 100d):0.#}%")}\tProcessed duration: {e.ProcessedDuration}\tFPS:{e.Fps}\tSize: {e.SizeKb} kb\t{Path.GetFileName(CurrentFile)}");
+				OnProgress.Invoke(this, new EncodingProgressEventArgs(((double)e.ProcessedDuration.Ticks / (double)transcodingJob.Duration.Ticks) * 100d, CurrentFile, e.SizeKb, e.ProcessedDuration, e.Fps));
 			};
 				
 			ffmpeg.Error += (object sender, ConversionErrorEventArgs e) => {
 				_logger.LogError($"Encoding error {e.Exception.Message}", e.Exception);
 				Kill();
+				OnError.Invoke(this, new EncodingErrorEventArgs(e.Exception.Message));
 			};
 				
-			ffmpeg.Complete += async (object sender, ConversionCompleteEventArgs e) =>
+			ffmpeg.Complete += (object sender, ConversionCompleteEventArgs e) =>
 			{
 				_logger.LogWarning($"Encoding complete! {CurrentFile}");
-				_transcodingJob.OnComplete();
-				await Task.Run(() => _onSuccessInternal(_tempFile));
-				CleanTempData();
-				_onDoneInternal();
+				//if (_onSuccessInternal == null)
+				//{
+				//	_logger.LogError("No success action defined!");
+				//	throw new EncoderException("No success action defined!");
+				//}
+				//// DONT CHANGE THE ORDER OF CALLS BELOW!!!
+				//_logger.LogWarning("A");
+				//_transcodingJob.OnComplete(); // Deletes the original source file
+				//_logger.LogWarning("B");
+				//_onDoneInternal(); // WORKS
+				//_logger.LogWarning("C");
+				//_onSuccessInternal(_tempFile); // Move the finished file, remove transcoding job from queue
+				//_logger.LogWarning("D");
+				//CleanTempData();
+				//_logger.LogWarning("E");
+				//_busy = false;
+				//_logger.LogWarning("F");
+				OnSuccess.Invoke(this, new EncodingSuccessEventArgs(_tempFile));
 				_busy = false;
 			};
 
@@ -358,7 +325,44 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			TranscodingStarted = DateTime.Now;
 			_logger.LogDebug("Ffmpeg started");
 			_stalledFileCandidate = null;
-			onStart?.Invoke();
+			StallMonitor();
+			OnStart.Invoke(this, new EventArgs());
+		}
+
+		public void Kill()
+		{
+			_logger.LogWarning("Killing the encoder");
+			_cancellationTokenSource.Cancel();
+		}
+
+		public void Dispose()
+		{
+			Dispose(true);
+			GC.SuppressFinalize(this);
+		}
+
+		public void DisposeAndKeepFiles()
+		{
+			keepFiles = true;
+			Dispose(true);
+			GC.SuppressFinalize(this);
+		}
+
+		protected virtual void Dispose(bool disposing)
+		{
+			if (disposed)
+				return;
+
+			if (disposing)
+			{
+				if (_transcodingJob != null && !keepFiles)
+				{
+					CleanTempData();
+					Kill();
+				}
+			}
+
+			disposed = true;
 		}
 
 		private void StallMonitor()
@@ -429,18 +433,34 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				File.Delete(_batFile);
 			}
 
-			CurrentFile = null;
 			_tempFile = null;
 			TranscodingStarted = null;
 			_lastTempFileSize = null;
 			_stalledFileCandidate = null;
-			//_transcodingJob = null; // This kills the .OnError attached to transcoding job
+			_transcodingJob = null; // This kills the .OnError attached to transcoding job
 		}
 
-		public void Kill()
+		private static class Regexes
 		{
-			_logger.LogWarning("Killing the encoder");
-			_cancellationTokenSource.Cancel();
+			public static Regex FFMPEGBasicInfo => new Regex(@"^\s{2}Duration:\s(?<Duration>.+),\sstart\:\s(?<Start>.+),\sbitrate\:\s(?<Bitrate>\d+)\skb\/s", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Compiled | RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(5));
+			public static Regex FFMPEGStreams => new Regex(@"Stream\s#(?<StreamId>\d):(?<StreamIndex>\d)(?:\((?<Language>\w{3})\))?:\s(?<StreamType>\w+):\s(?<StreamCodec>.+?)(?:,\s|$)(?<StreamDetails>.+)?$(?:\s*Metadata:(?<MetaData>(?s).+?(?=$\s{5}\w|$\s\w)))?", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(5));
+			public static Regex FFMPEGMetadata => new Regex(@"^\s*(?<Key>[^\s]+)\s*:\s(?<Value>.+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture | RegexOptions.Multiline);
+		}
+
+		/// <summary>
+		/// Reset cancellation token source, which is originally only intended to be used once
+		/// </summary>
+		private void SetCancellationToken()
+		{
+			_cancellationTokenSource = new CancellationTokenSource();
+			_cancellationTokenSource.Token.Register(() => {
+				CleanTempData(true);
+				OnCancelled.Invoke(this, new EventArgs());
+				_busy = false;
+				_logger.LogInformation("Encoding cancelled");
+				_cancellationTokenSource = new CancellationTokenSource();
+				_cancellationTokenSource.Token.Register(() => SetCancellationToken());
+			});
 		}
 
 		private async Task<FFMPEGFileModel> GetFileModelAsync(string filePath)
