@@ -1,4 +1,5 @@
 ﻿using net.jancerveny.sofaking.BusinessLogic.Models;
+using net.jancerveny.sofaking.Common.Constants;
 using net.jancerveny.sofaking.Common.Models;
 using System;
 using System.Collections.Generic;
@@ -46,7 +47,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
         /// <returns>A list of torrents ordered by Seeders</returns>
         public async Task<List<TorrentSearchResult>> Search(string queryRaw)
         {
-            string query = Regexes.SearchQuerySanitiaztion.Replace(queryRaw.Replace("é", "e"), " ");
+            string query = Regexes.SearchQuerySanitiaztion.Replace(queryRaw.Utf8ToAscii(), " ");
             // TODO: Refactor this to make own TPB-crawler-specific client
             using (var client = _clientFactory.CreateClient())
             {

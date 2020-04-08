@@ -110,7 +110,7 @@ namespace net.jancerveny.sofaking.client.console
                                 status = SetMovieConsoleStatus(movieJob);
                             }
 
-                            Console.WriteLine($"[{(i+1)}]\t{vm.Score}/10\t{vm.ScoreMetacritic} Metacritic\t{status}\t{vm.Title} ({vm.ReleaseYear})");
+                            Console.WriteLine($"[{(i+1)}]\t{vm.Score}/10\t{vm.ScoreMetacritic} Metacritic\t{status}\t{vm.Title.Utf8ToAscii()} ({vm.ReleaseYear})");
 
                             if (movieJob != null)
                                 Console.ResetColor();
