@@ -21,7 +21,7 @@ using System.Threading.Tasks;
 
 namespace net.jancerveny.sofaking.WorkerService
 {
-	public class DownloadFinishedWorker : BackgroundService
+	public class SoFakingWorker : BackgroundService
 	{
 		private static class Regexes
 		{
@@ -30,7 +30,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			public static Regex FileNamePattern => new Regex(@"^(?<FileName>.+)(?<FileExtension>\.[a-z]{3})$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 		}
 		private readonly IHttpClientFactory _clientFactory;
-		private readonly ILogger<DownloadFinishedWorker> _logger;
+		private readonly ILogger<SoFakingWorker> _logger;
 		private readonly ILogger<FFMPEGEncoderService> _loggerEnc;
 		private readonly DownloadFinishedWorkerConfiguration _configuration;
 		private readonly SoFakingConfiguration _sofakingConfiguration;
@@ -40,7 +40,7 @@ namespace net.jancerveny.sofaking.WorkerService
 		protected static IEncoderService _encoderTranscodingInstance;
 		private static ConcurrentDictionary<int, ITranscodingJob> _transcodingJobs = new ConcurrentDictionary<int, ITranscodingJob>();
 
-		public DownloadFinishedWorker(ILogger<DownloadFinishedWorker> logger, ILogger<FFMPEGEncoderService> loggerEnc, IHttpClientFactory clientFactory, DownloadFinishedWorkerConfiguration configuration, MovieService movieService, ITorrentClientService torrentClient,/* IEncoderService encoderService,*/ SoFakingConfiguration sofakingConfiguration, EncoderConfiguration encoderConfiguration)
+		public SoFakingWorker(ILogger<SoFakingWorker> logger, ILogger<FFMPEGEncoderService> loggerEnc, IHttpClientFactory clientFactory, DownloadFinishedWorkerConfiguration configuration, MovieService movieService, ITorrentClientService torrentClient,/* IEncoderService encoderService,*/ SoFakingConfiguration sofakingConfiguration, EncoderConfiguration encoderConfiguration)
 		{
 			if (clientFactory == null) throw new ArgumentNullException(nameof(clientFactory));
 			if (movieService == null) throw new ArgumentNullException(nameof(movieService));
@@ -312,7 +312,7 @@ namespace net.jancerveny.sofaking.WorkerService
 
 					if (File.Exists(downloadFile))
 					{
-						File.Move(downloadFile, Path.Combine(downloadDirectory, Regexes.FileSystemSafeName.Replace($"{movieJob.Year} {movieJob.Title}", string.Empty) + torrentFileNameExtension));
+						File.Move(downloadFile, Path.Combine(downloadDirectory, Regexes.FileSystemSafeName.Replace($"{movieJob.Year} {movieJob.Title}", string.Empty) + torrentFileNameExtension), true);
 					}
 				}
 

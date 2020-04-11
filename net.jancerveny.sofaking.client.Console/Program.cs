@@ -149,17 +149,10 @@ namespace net.jancerveny.sofaking.client.console
                         Console.WriteLine("No torrents found.");
                         Console.ResetColor();
 
-                        await AddToWatchlistPrompt(new Movie
-                        {
-                            Title = selectedMovie.Title,
-                            ImdbId = selectedMovie.Id,
-                            ImdbScore = selectedMovie.Score,
-                            MetacriticScore = selectedMovie.ScoreMetacritic,
-                            TorrentName = query,
-                            ImageUrl = selectedMovie.ImageUrl,
-                            Status = MovieStatusEnum.WatchingFor,
-                            Genres = selectedMovie.Genres
-                        }, movieService);
+                        var m = MergeMovie(selectedMovie);
+                        m.TorrentName = query;
+                        m.Status = MovieStatusEnum.WatchingFor;
+                        await AddToWatchlistPrompt(m, movieService);
                         continue;
                     }
 
@@ -202,17 +195,11 @@ namespace net.jancerveny.sofaking.client.console
                         Console.WriteLine("\n");
                         Console.WriteLine($"Cancel? [n], [1-{(foundTorrents.Count() + 1)}] for manual selection, CTRL+C = quit)");
 
-                        //await AddToWatchlistPrompt(new Movie
-                        //{
-                        //    Title = selectedMovie.Title,
-                        //    ImdbId = selectedMovie.Id,
-                        //    ImdbScore = selectedMovie.Score,
-                        //    MetacriticScore = selectedMovie.ScoreMetacritic,
-                        //    TorrentName = query,
-                        //    ImageUrl = selectedMovie.ImageUrl,
-                        //    Status = MovieStatusEnum.WatchingFor
-                        //},  movieService);
-                        //continue;
+                        var m = MergeMovie(selectedMovie);
+                        m.TorrentName = query;
+                        m.Status = MovieStatusEnum.WatchingFor;
+                        await AddToWatchlistPrompt(m, movieService);
+                        continue;
                     } else
                     {
                         Console.ForegroundColor = ConsoleColor.Green;
@@ -254,24 +241,7 @@ namespace net.jancerveny.sofaking.client.console
                             }
                             try
                             {
-                                var m = new Movie
-                                {
-                                    Title = selectedMovie.Title,
-                                    ImdbId = selectedMovie.Id,
-                                    ImdbScore = selectedMovie.Score,
-                                    MetacriticScore = selectedMovie.ScoreMetacritic,
-                                    TorrentName = selectedTorrent.Name,
-                                    TorrentClientTorrentId = result.TorrentId,
-                                    TorrentHash = result.Hash,
-                                    ImageUrl = selectedMovie.ImageUrl,
-                                    SizeGb = selectedTorrent.SizeGb,
-                                    Genres = selectedMovie.Genres,
-                                    Year = selectedMovie.ReleaseYear,
-                                    Director = selectedMovie.Director,
-                                    Creators = selectedMovie.Creators,
-                                    Actors = selectedMovie.Actors,
-                                    Description = selectedMovie.Description
-                                };
+                                var m = MergeMovie(selectedMovie, selectedTorrent, result);
 
                                 if (!await movieService.AddMovie(m))
                                 {
@@ -415,6 +385,28 @@ namespace net.jancerveny.sofaking.client.console
 
             Console.ForegroundColor = ConsoleColor.Red;
             return "?";
+        }
+
+        private static Movie MergeMovie(IVerifiedMovie selectedMovie, TorrentSearchResult selectedTorrent = null, ITorrentAddedResponse result = null)
+        {
+            return new Movie
+            {
+                Title = selectedMovie.Title,
+                ImdbId = selectedMovie.Id,
+                ImdbScore = selectedMovie.Score,
+                MetacriticScore = selectedMovie.ScoreMetacritic,
+                TorrentName = selectedTorrent?.Name,
+                TorrentClientTorrentId = result?.TorrentId ?? -1,
+                TorrentHash = result?.Hash,
+                ImageUrl = selectedMovie.ImageUrl,
+                SizeGb = selectedTorrent?.SizeGb ?? -1,
+                Genres = selectedMovie.Genres,
+                Year = selectedMovie.ReleaseYear,
+                Director = selectedMovie.Director,
+                Creators = selectedMovie.Creators,
+                Actors = selectedMovie.Actors,
+                Description = selectedMovie.Description
+            };
         }
     }
 }

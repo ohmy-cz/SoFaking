@@ -69,7 +69,7 @@ namespace net.jancerveny.sofaking.WorkerService
 						.AddSingleton<ITorrentClientService, TransmissionService>()
 						.AddSingleton<IVerifiedMovieSearchService, ImdbService>()
 						//.AddSingleton<IEncoderService, FFMPEGEncoderService>()
-						.AddHostedService<DownloadFinishedWorker>();
+						.AddHostedService<SoFakingWorker>();
 				});
 	}
 }
