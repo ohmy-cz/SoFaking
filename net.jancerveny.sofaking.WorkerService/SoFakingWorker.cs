@@ -181,7 +181,7 @@ namespace net.jancerveny.sofaking.WorkerService
 				Directory.Delete(MovieDownloadDirectory(torrent), true);
 #endif
 			}
-			catch (IOException e)
+			catch (IOException _)
 			{
 				await _movieService.SetMovieStatus(movie.Id, MovieStatusEnum.CouldNotDeleteDownloadDirectory);
 			}
@@ -668,27 +668,38 @@ namespace net.jancerveny.sofaking.WorkerService
 
 			// Move existing Cover image, or download a new one if null.
 			var finishedCoverImageJpg = Path.Combine(finishedMovieDirectory, "Cover.jpg");
-			if (coverImageJpg != null && File.Exists(coverImageJpg))
-			{
-				File.Move(coverImageJpg, finishedCoverImageJpg);
-			}
-			else
-			{
-				try
-				{
-					await Download.GetFile(movie.ImageUrl, finishedCoverImageJpg);
-				}
-				catch (Exception ex)
-				{
-					finishedCoverImageJpg = null;
-					_logger.LogError($"Could not create a Cover image. {ex.Message}", ex);
-				}
-			}
 
-			if (finishedCoverImageJpg != null)
+			try
 			{
-				await WindowsFolder.SetFolderPictureAsync(finishedCoverImageJpg);
-				File.SetAttributes(finishedCoverImageJpg, File.GetAttributes(finishedCoverImageJpg) | FileAttributes.Hidden);
+				if (!File.Exists(finishedCoverImageJpg))
+				{
+					if (coverImageJpg != null && File.Exists(coverImageJpg))
+					{
+						File.Move(coverImageJpg, finishedCoverImageJpg);
+					}
+					else
+					{
+						try
+						{
+							await Download.GetFile(movie.ImageUrl, finishedCoverImageJpg);
+						}
+						catch (Exception ex)
+						{
+							finishedCoverImageJpg = null;
+							_logger.LogError($"Could not create a Cover image. {ex.Message}", ex);
+						}
+					}
+
+					if (finishedCoverImageJpg != null)
+					{
+						await WindowsFolder.SetFolderPictureAsync(finishedCoverImageJpg);
+						File.SetAttributes(finishedCoverImageJpg, File.GetAttributes(finishedCoverImageJpg) | FileAttributes.Hidden);
+					}
+				}
+			}
+			catch (Exception e)
+			{
+				_logger.LogInformation($"Could create a cover image: {e.Message}.", e);
 			}
 
 			try
