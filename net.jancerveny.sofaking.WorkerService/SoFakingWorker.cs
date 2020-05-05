@@ -82,8 +82,7 @@ namespace net.jancerveny.sofaking.WorkerService
 
 			while (!stoppingToken.IsCancellationRequested)
 			{
-				_logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
-				_logger.LogInformation($"Transcoding: {_encoderTranscodingInstance?.CurrentFile ?? "Nothing"}");
+				_logger.LogInformation($"Transcoding: {(_encoderTranscodingInstance?.CurrentFile != null ? $"({_encoderTranscodingInstance.PercentDone:0.00}%) {_encoderTranscodingInstance?.CurrentFile}" : "Nothing")}");
 				IReadOnlyList<ITorrentClientTorrent> torrents;
 
 				try
@@ -471,12 +470,12 @@ namespace net.jancerveny.sofaking.WorkerService
 
 				if(flags == EncodingTargetFlags.None)
 				{
-					_logger.LogDebug($"Video file {videoFile} doesn't need transcoding, adding to files to move.");
+					_logger.LogInformation($"Video file {videoFile} doesn't need transcoding, adding to files to move.");
 					filesToMove.Add(videoFile);
 					continue;
 				}
 
-				_logger.LogDebug($"Adding {videoFile} to transcoding jobs.");
+				_logger.LogInformation($"Adding {videoFile} to transcoding jobs.");
 				pendingTranscodingJobs.Add(new TranscodingJob
 				{
 					SourceFile = videoFile,
@@ -500,7 +499,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			// Using this pendingTranscodingJobsList allows us to return for movies that need no transcoding, so they won't wait for the transcoding to be complete and can be simply copied  over to the resulting folder.
 			if (!pendingTranscodingJobs.Any())
 			{
-				_logger.LogDebug($"Transcoding not needed, no pending jobs.");
+				_logger.LogInformation($"Transcoding not needed, no pending jobs.");
 				return new TranscodeResult(TranscodeResultEnum.TranscodingNotNeeded, filesToMove.ToArray());
 			}
 
@@ -509,7 +508,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			var tjdb = (await _movieService.GetMoviesAsync()).Where(x => x.Status == MovieStatusEnum.TranscodingStarted).Any();
 			if (tjmem || tjdb)
 			{
-				_logger.LogDebug($"Queuing {movie.TorrentName}");
+				_logger.LogInformation($"Queuing {movie.TorrentName}");
 				await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingQueued);
 				return new TranscodeResult(TranscodeResultEnum.Queued);
 			}
@@ -529,7 +528,7 @@ namespace net.jancerveny.sofaking.WorkerService
 			}
 
 			// Start transcoding by copying our pending tasks into the static global queue
-			_logger.LogDebug($"Setting movie status to TranscodingStarted.");
+			_logger.LogInformation($"Setting movie status to TranscodingStarted.");
 			await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingStarted);
 			foreach(var transcodingJob in pendingTranscodingJobs)
 			{
@@ -538,7 +537,7 @@ namespace net.jancerveny.sofaking.WorkerService
 				while(attempts <= 10)
 				{
 					var id = _transcodingJobs.IsEmpty ? 0 : _transcodingJobs.Select(x => x.Key).Max() + 1;
-					_logger.LogDebug($"Trying to add transconding job {id} to the global queue");
+					_logger.LogInformation($"Trying to add transconding job {id} to the global queue");
 					if (_transcodingJobs.TryAdd(id, transcodingJob))
 					{
 						success = true;
@@ -569,12 +568,12 @@ namespace net.jancerveny.sofaking.WorkerService
 					{
 						// Do this as the first thing, so no other encoding gets started
 						_encoderTranscodingInstance = new FFMPEGEncoderService(_loggerEnc, _encoderConfiguration, _sofakingConfiguration);
-						_logger.LogDebug($"Preparing transcoding of {transcodingJob.SourceFile}");
+						_logger.LogWarning($"Preparing transcoding of {transcodingJob.SourceFile}");
 
 						Action FirstOut = () => {
 							if (!_transcodingJobs.Any())
 							{
-								_logger.LogDebug("No transcoding jobs left to remove");
+								_logger.LogInformation("No transcoding jobs left to remove");
 								return;
 							}
 
@@ -584,27 +583,37 @@ namespace net.jancerveny.sofaking.WorkerService
 
 						// TODO: Use a factory
 						_encoderTranscodingInstance.OnStart += (object sender, EventArgs e) => {
-							_logger.LogDebug("Transcoding started");
+							_logger.LogInformation("Transcoding started");
 						};
 
 						_encoderTranscodingInstance.OnProgress += (object sender, EncodingProgressEventArgs e) => {
 							_logger.LogDebug($"Transcoding progress: {e.ProgressPercent:0.##}%");
 						};
 
-						_encoderTranscodingInstance.OnError += (object sender, EncodingErrorEventArgs e) => {
+						_encoderTranscodingInstance.OnError += async (object sender, EncodingErrorEventArgs e) => {
 							FirstOut();
 							_encoderTranscodingInstance.Dispose();
 							_encoderTranscodingInstance = null;
 
-							_logger.LogDebug($"Transcoding failed: {e.Error}");
+							if (_transcodingJobs.Count == 0)
+							{
+								await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingError);
+							}
+
+							_logger.LogInformation($"Transcoding failed: {e.Error}");
 						};
 
-						_encoderTranscodingInstance.OnCancelled += (object sender, EventArgs e) => {
+						_encoderTranscodingInstance.OnCancelled += async (object sender, EventArgs e) => {
 							FirstOut();
 							_encoderTranscodingInstance.Dispose();
 							_encoderTranscodingInstance = null;
 
-							_logger.LogDebug("Transcoding cancelled");
+							if (_transcodingJobs.Count == 0)
+							{
+								await _movieService.SetMovieStatus(movieJobId, MovieStatusEnum.TranscodingCancelled);
+							}
+
+							_logger.LogInformation("Transcoding cancelled");
 						};
 
 						_encoderTranscodingInstance.OnSuccess += async (object sender, EncodingSuccessEventArgs e) => {
@@ -621,7 +630,8 @@ namespace net.jancerveny.sofaking.WorkerService
 							}
 
 							// Do this as the last thing, so no other encoding gets started
-							_encoderTranscodingInstance.Dispose();
+							_encoderTranscodingInstance.Kill(); // Note: .Dispose here leads to "Broken pipe" Exception
+							_encoderTranscodingInstance.CleanTempData();
 							_encoderTranscodingInstance = null;
 						};
 

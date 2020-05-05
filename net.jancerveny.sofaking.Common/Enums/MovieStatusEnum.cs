@@ -11,6 +11,7 @@
     TranscodingStarted = 8,
     TranscodingFinished = 9,
     TranscodingError = 10,
+    TranscodingCancelled = 20,
     Finished = 11,
     FileInUse = 12,
     FileNotFound = 13, // The download directory or downloaded file missing

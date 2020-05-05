@@ -22,6 +22,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 		public string CurrentFile { get { return _transcodingJob.SourceFile; } }
 		public bool Busy { get { return _busy; } }
 		public DateTime? TranscodingStarted { get; private set; }
+		public double PercentDone { get; private set; }
 		public event EventHandler<EventArgs> OnStart;
 		public event EventHandler<EventArgs> OnCancelled;
 		public event EventHandler<EncodingProgressEventArgs> OnProgress;
@@ -268,7 +269,8 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			_logger.LogDebug("Setting up events");
 			ffmpeg.Progress += (object sender, ConversionProgressEventArgs e) =>
 			{
-				OnProgress.Invoke(this, new EncodingProgressEventArgs(((double)e.ProcessedDuration.Ticks / (double)transcodingJob.Duration.Ticks) * 100d, CurrentFile, e.SizeKb, e.ProcessedDuration, e.Fps));
+				PercentDone = ((double)e.ProcessedDuration.Ticks / (double)transcodingJob.Duration.Ticks) * 100d;
+				OnProgress.Invoke(this, new EncodingProgressEventArgs(PercentDone, CurrentFile, e.SizeKb, e.ProcessedDuration, e.Fps));
 			};
 				
 			ffmpeg.Error += (object sender, ConversionErrorEventArgs e) => {
@@ -414,7 +416,12 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			});
 		}
 
-		private void CleanTempData(bool keepCommand = false)
+		public void CleanTempData()
+		{
+			CleanTempData(false);
+		}
+
+		private void CleanTempData(bool keepCommand)
 		{
 			_logger.LogDebug($"Cleaning up the TEMP data{(keepCommand ? ", keeping the command file." : ".")}");
 			

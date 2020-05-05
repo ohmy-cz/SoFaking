@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.VisualStudio.Web.CodeGeneration.Design" Version="3.1.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\net.jancerveny.sofaking.BusinessLogic\net.jancerveny.sofaking.BusinessLogic.csproj" />
+    <ProjectReference Include="..\net.jancerveny.sofaking.DataLayer\net.jancerveny.sofaking.DataLayer.csproj" />
+  </ItemGroup>
+
+
+</Project>

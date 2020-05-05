@@ -10,8 +10,10 @@ namespace net.jancerveny.sofaking.BusinessLogic.Interfaces
 		Task StartTranscodingAsync(ITranscodingJob transcodingJob, CancellationToken cancellationToken);
 		Task<IMediaInfo> GetMediaInfo(string filePath);
 		string CurrentFile { get; }
+		double PercentDone { get; }
 		bool Busy { get; }
 		void Kill();
+		void CleanTempData();
 		public event EventHandler<EventArgs> OnStart;
 		/// <summary>
 		/// Gets triggered when the transcoding got cancelled externally
