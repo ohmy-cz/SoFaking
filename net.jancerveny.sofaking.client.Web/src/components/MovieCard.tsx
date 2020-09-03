@@ -12,7 +12,6 @@ type MovieProps = {
 };
 
 export default function MovieCard(props: MovieProps): JSX.Element {
-  console.log(props.movie);
   return (
     <Card className={style.movieCard}>
       <CardContent>

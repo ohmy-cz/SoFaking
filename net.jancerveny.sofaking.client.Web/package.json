@@ -2,6 +2,7 @@
   "name": "sofaking",
   "version": "0.1.0",
   "private": true,
+  "proxy": "http://localhost:999",
   "dependencies": {
     "@material-ui/core": "^4.11.0",
     "@material-ui/lab": "^4.0.0-alpha.49",

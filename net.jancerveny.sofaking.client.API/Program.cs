@@ -25,7 +25,7 @@ namespace net.jancerveny.sofaking.client.API
 					builder
 						.SetBasePath(Path.GetDirectoryName(Assembly.GetEntryAssembly().Location)) // Required for Linux service
 						.AddJsonFile("appsettings.json")
-						.AddJsonFile($"appsettings.{context.HostingEnvironment.EnvironmentName}.json")
+						.AddJsonFile($"appsettings.{context.HostingEnvironment.EnvironmentName}.json", true)
 						.AddEnvironmentVariables()
 						.Build();
 				})

@@ -11,6 +11,8 @@ import ICountryType from "./interfaces/ICountryType";
 import logo from "./logo.png";
 import MovieCard from "./components/MovieCard";
 import Loading from "./components/Loading";
+import ITransmissionTorrentRequest from "./interfaces/ITransmissionTorrentRequest";
+import ITransmissionTorrentResponse from "./interfaces/ITransmissionTorrentResponse";
 
 function sleep(delay = 0) {
   return new Promise((resolve) => {
@@ -23,6 +25,10 @@ export default function SoFakingClient() {
   const [options, setOptions] = useState<ICountryType[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [entities, setEntities] = useState<ISofaKingEntity[]>([]);
+  const [torrents, setTorrents] = useState<ITransmissionTorrentResponse[]>([]);
+  const [transmissionSessionId, setTransmissionSessionId] = useState<
+    string | null
+  >(null);
   const loading = open && options.length === 0;
 
   React.useEffect(() => {
@@ -45,7 +51,61 @@ export default function SoFakingClient() {
           console.warn(error);
         }
       );
+
+    // call the endpoint with method session-get,
+    // read the X-Transmission-Session-Id header,
+    // attach the X-Transmission-Session-Id to all following requests
+    const authorizationRequest: ITransmissionTorrentRequest = {
+      method: "session-get",
+    };
+
+    fetch("/transmission/rpc", {
+      method: "POST",
+      // mode: "same-origin", // no-cors, *cors, same-origin
+      // cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
+      // credentials: "omit", // include, *same-origin, omit
+      headers: {
+        Accept: "application/json",
+      },
+      body: JSON.stringify(authorizationRequest),
+    }).then((response) => {
+      console.log(response);
+      if (response.headers) {
+        response.headers.forEach((header) => {
+          if (header === "X-Transmission-Session-Id") {
+            setTransmissionSessionId(header);
+            return;
+          }
+        });
+      } else {
+        console.error(response.statusText);
+      }
+    });
   }, []);
+
+  // React.useEffect(() => {
+  //   fetch("//localhost:999/transmission/rpc")
+  //     .then((response) => {
+  //       if (response.ok) {
+  //         return response.json();
+  //       } else {
+  //         return Promise.reject(response.statusText);
+  //       }
+  //     })
+  //     .then(
+  //       (result) => {
+  //         setTorrents(result);
+  //       },
+  //       (error) => {
+  //         setTorrents([]);
+  //         console.warn(error);
+  //       }
+  //     );
+  // }, [transmissionSessionId]);
+
+  React.useEffect(() => {
+    console.log(torrents);
+  }, [torrents]);
 
   React.useEffect(() => {
     let active = true;
@@ -118,11 +178,12 @@ export default function SoFakingClient() {
           />
         )}
       />
+      <div>Transmission session ID: {transmissionSessionId}</div>
       {!isLoaded && <Loading />}
       {entities.length > 0 && (
         <Grid container spacing={3}>
           {entities.map((movie) => (
-            <Grid item xs={6} sm={4} md={3} lg={2}>
+            <Grid key={movie.Movie.ImdbId} item xs={6} sm={4} md={3} lg={2}>
               <MovieCard movie={movie.Movie} />
             </Grid>
           ))}
