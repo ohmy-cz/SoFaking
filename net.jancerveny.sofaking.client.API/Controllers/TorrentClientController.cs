@@ -24,6 +24,7 @@ namespace net.jancerveny.sofaking.client.API.Controllers
             _torrentClientService = torrentClientService;
         }
 
+		[HttpGet]
         public async Task<IEnumerable<ITorrentClientTorrent>> GetAsync()
         {
             return await _torrentClientService.GetAllTorrents();

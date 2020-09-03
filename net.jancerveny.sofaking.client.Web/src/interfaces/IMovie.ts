@@ -1,7 +1,7 @@
 import { MovieStatusEnum } from "../enums/MovieStatusEnum";
 import { GenreFlags } from "../enums/GenreFlags";
 
-export default interface ISofaKingMovieProperties {
+export default interface IMovie {
   Id: number;
   Title: string;
   Added: Date;

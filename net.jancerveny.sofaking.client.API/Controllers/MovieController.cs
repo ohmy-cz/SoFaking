@@ -25,7 +25,7 @@ namespace net.jancerveny.sofaking.client.API.Controllers
 		[HttpGet]
 		public async Task<IEnumerable<Movie>> GetAsync()
 		{
-			return (await _movieService.GetMoviesAsync()).OrderByDescending(x => x.Status).ThenByDescending(x => x.Deleted);
+			return (await _movieService.GetMoviesAsync()).OrderBy(x => x.Status == MovieStatusEnum.Downloading).ThenBy(x => x.Status == MovieStatusEnum.DownloadQueued).ThenByDescending(x => x.Status).ThenByDescending(x => x.Deleted);
 		}
 
 		/// <summary>

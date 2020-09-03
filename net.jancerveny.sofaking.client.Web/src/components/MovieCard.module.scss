@@ -34,4 +34,12 @@
   &:hover .cover > div {
     background-color: rgba(0, 0, 0, 0.5);
   }
+
+  svg circle {
+    color: #ccc;
+  }
+
+  .success svg circle {
+    color: #3cb371 !important;
+  }
 }

@@ -6,13 +6,12 @@ import Autocomplete from "@material-ui/lab/Autocomplete";
 // *https://www.registers.service.gov.uk/registers/country/use-the-api*
 import CircularProgress from "@material-ui/core/CircularProgress";
 import { Container, Grid, Button } from "@material-ui/core";
-import ISofaKingEntity from "./interfaces/ISofakingEntity";
 import ICountryType from "./interfaces/ICountryType";
 import logo from "./logo.png";
 import MovieCard from "./components/MovieCard";
 import Loading from "./components/Loading";
-import ITransmissionTorrentRequest from "./interfaces/ITransmissionTorrentRequest";
-import ITransmissionTorrentResponse from "./interfaces/ITransmissionTorrentResponse";
+import ITorrent from "./interfaces/ITorrent";
+import IMovie from "./interfaces/IMovie";
 
 function sleep(delay = 0) {
   return new Promise((resolve) => {
@@ -24,11 +23,8 @@ export default function SoFakingClient() {
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState<ICountryType[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [entities, setEntities] = useState<ISofaKingEntity[]>([]);
-  const [torrents, setTorrents] = useState<ITransmissionTorrentResponse[]>([]);
-  const [transmissionSessionId, setTransmissionSessionId] = useState<
-    string | null
-  >(null);
+  const [movies, setMovies] = useState<IMovie[]>([]);
+  const [torrents, setTorrents] = useState<ITorrent[]>([]);
   const loading = open && options.length === 0;
 
   React.useEffect(() => {
@@ -43,69 +39,33 @@ export default function SoFakingClient() {
       .then(
         (result) => {
           setIsLoaded(true);
-          setEntities(result);
+          setMovies(result);
         },
         (error) => {
           setIsLoaded(true);
-          setEntities([]);
+          setMovies([]);
           console.warn(error);
         }
       );
 
-    // call the endpoint with method session-get,
-    // read the X-Transmission-Session-Id header,
-    // attach the X-Transmission-Session-Id to all following requests
-    const authorizationRequest: ITransmissionTorrentRequest = {
-      method: "session-get",
-    };
-
-    fetch("/transmission/rpc", {
-      method: "POST",
-      // mode: "same-origin", // no-cors, *cors, same-origin
-      // cache: "no-cache", // *default, no-cache, reload, force-cache, only-if-cached
-      // credentials: "omit", // include, *same-origin, omit
-      headers: {
-        Accept: "application/json",
-      },
-      body: JSON.stringify(authorizationRequest),
-    }).then((response) => {
-      console.log(response);
-      if (response.headers) {
-        response.headers.forEach((header) => {
-          if (header === "X-Transmission-Session-Id") {
-            setTransmissionSessionId(header);
-            return;
-          }
-        });
-      } else {
-        console.error(response.statusText);
-      }
-    });
+    fetch("//movies-api.jancerveny.net/torrentclient")
+      .then((response) => {
+        if (response.ok) {
+          return response.json();
+        } else {
+          return Promise.reject(response.statusText);
+        }
+      })
+      .then(
+        (result) => {
+          setTorrents(result);
+        },
+        (error) => {
+          setTorrents([]);
+          console.warn(error);
+        }
+      );
   }, []);
-
-  // React.useEffect(() => {
-  //   fetch("//localhost:999/transmission/rpc")
-  //     .then((response) => {
-  //       if (response.ok) {
-  //         return response.json();
-  //       } else {
-  //         return Promise.reject(response.statusText);
-  //       }
-  //     })
-  //     .then(
-  //       (result) => {
-  //         setTorrents(result);
-  //       },
-  //       (error) => {
-  //         setTorrents([]);
-  //         console.warn(error);
-  //       }
-  //     );
-  // }, [transmissionSessionId]);
-
-  React.useEffect(() => {
-    console.log(torrents);
-  }, [torrents]);
 
   React.useEffect(() => {
     let active = true;
@@ -178,15 +138,23 @@ export default function SoFakingClient() {
           />
         )}
       />
-      <div>Transmission session ID: {transmissionSessionId}</div>
       {!isLoaded && <Loading />}
-      {entities.length > 0 && (
+      {movies.length > 0 && (
         <Grid container spacing={3}>
-          {entities.map((movie) => (
-            <Grid key={movie.Movie.ImdbId} item xs={6} sm={4} md={3} lg={2}>
-              <MovieCard movie={movie.Movie} />
-            </Grid>
-          ))}
+          {movies.map((movie, i) => {
+            let torrent: ITorrent | null = null;
+            torrents.forEach((t) => {
+              if (t.hashString === movie.TorrentHash) {
+                torrent = t;
+                return;
+              }
+            });
+            return (
+              <Grid key={i} item xs={6} sm={4} md={3} lg={2}>
+                <MovieCard movie={movie} torrent={torrent} />
+              </Grid>
+            );
+          })}
         </Grid>
       )}
     </Container>
