@@ -20,7 +20,11 @@ export default function MovieCard(props: MovieProps): JSX.Element {
           className={style.cover}
           style={{ backgroundImage: `url(${props.movie.ImageUrl})` }}
         >
-          <div>{props.movie.Title}</div>
+          <div>
+            <Typography variant="h5" component="h2">
+              {props.movie.Title}
+            </Typography>
+          </div>
         </div>
       </CardContent>
       <CardActions>
