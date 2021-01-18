@@ -11,6 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace net.jancerveny.sofaking.client.console
@@ -115,29 +116,16 @@ namespace net.jancerveny.sofaking.client.console
                             if (movieJob != null)
                                 Console.ResetColor();
                         }
-                        Console.WriteLine("[n] for new search");
 
-                        bool restartFlag1 = false;
-                        while (true)
+                        Console.WriteLine($"[1-{verifiedMovies.Count()}] Search torrents for download, Any key = New search, CTRL+C = quit");
+
+                        if (int.TryParse(Console.ReadLine(), out int selectedMovieIndex))
                         {
-                            var key1 = Console.ReadKey();
-                            if (key1.KeyChar == 'n')
-                            {
-                                restartFlag1 = true;
-                                break;
-                            }
-
-                            if (int.TryParse(key1.KeyChar.ToString(), out int selectedMovieIndex))
-                            {
-                                selectedMovie = verifiedMovies.ElementAt(selectedMovieIndex-1);
-                                break;
-                            }
-                        }
-
-                        if (restartFlag1)
-                        {
+                            selectedMovie = verifiedMovies.ElementAt(selectedMovieIndex - 1);
+                        } else
+						{
                             continue;
-                        }
+						}
                     }
 
                     var torrentSearchService = serviceProvider.GetService<TPBParserService>();
@@ -149,11 +137,26 @@ namespace net.jancerveny.sofaking.client.console
                         Console.WriteLine("No torrents found.");
                         Console.ResetColor();
 
-                        var m = MergeMovie(selectedMovie);
-                        m.TorrentName = query;
-                        m.Status = MovieStatusEnum.WatchingFor;
-                        await AddToWatchlistPrompt(m, movieService);
-                        continue;
+                        Console.WriteLine("\n");
+                        Console.WriteLine($"Add to watchlist? [w], Cancel [n], CTRL+C = quit)");
+
+                        if (Console.ReadLine() == "w")
+                        {
+                            try
+                            {
+                                var m = MergeMovie(selectedMovie);
+                                m.TorrentName = query;
+                                m.Status = MovieStatusEnum.WatchingFor;
+
+                                await movieService.AddMovie(m);
+                                continue;
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Could not add Movie to the watchlist: {ex.Message}");
+                                Console.ReadKey();
+                            }
+                        }
                     }
 
 
@@ -193,13 +196,7 @@ namespace net.jancerveny.sofaking.client.console
                         Console.WriteLine($"None of the torrents above passed the limits (Seeders > 0, Size Gb > {TorrentScoring.FileSizeGbMin} < {TorrentScoring.FileSizeGbMax}), or contained a banned word: {string.Join(", ", TorrentScoring.Tags.Where(x => x.Value == TorrentScoring.BannedTag).Select(x => x.Key))}");
                         Console.ResetColor();
                         Console.WriteLine("\n");
-                        Console.WriteLine($"Cancel? [n], [1-{(foundTorrents.Count() + 1)}] for manual selection, CTRL+C = quit)");
-
-                        var m = MergeMovie(selectedMovie);
-                        m.TorrentName = query;
-                        m.Status = MovieStatusEnum.WatchingFor;
-                        await AddToWatchlistPrompt(m, movieService);
-                        continue;
+                        Console.WriteLine($"Cancel? [n], Watchlist [w], [1-{(foundTorrents.Count() + 1)}] for manual selection, CTRL+C = quit)");
                     } else
                     {
                         Console.ForegroundColor = ConsoleColor.Green;
@@ -208,64 +205,85 @@ namespace net.jancerveny.sofaking.client.console
                         Console.WriteLine("\n");
                         Console.WriteLine($"Download the best torrent? [y/n], [1-{(foundTorrents.Count() + 1)}] for manual selection, CTRL+C = quit)");
                     }
-
-                    bool restartFlag2 = false;
-                    while (true)
-                    {
-                        var selectedTorrent = bestTorrent;
-                        string input = Console.ReadLine();
+                    
+                    var selectedTorrent = bestTorrent;
+                    string input = Console.ReadLine();
                         
-                        if (input == "n")
-                        {
-                            restartFlag2 = true;
-                            break;
-                        }
+                    if (input == "n")
+                    {
+                        continue;
+                    }
 
-                        if (input == "y" && bestTorrent == null)
-                        {
-                            continue;
-                        }
-
-                        if (input != "y" && int.TryParse(input, out int selectedTorrentIndex))
-                        {
-                            selectedTorrent = foundTorrents.ElementAt(selectedTorrentIndex - 1);
-                        }
-
-                        var transmission = serviceProvider.GetService<ITorrentClientService>();
+                    if (input == "w")
+                    {
                         try
                         {
-                            var result = await transmission.AddTorrentAsync(selectedTorrent.MagnetLink);
-                            if(result == null)
-                            {
-                                throw new Exception("Could not add torrent to the torrent client.");
-                            }
-                            try
-                            {
-                                var m = MergeMovie(selectedMovie, selectedTorrent, result);
+                            var m = MergeMovie(selectedMovie);
+                            m.TorrentName = query;
+                            m.Status = MovieStatusEnum.WatchingFor;
 
-                                if (!await movieService.AddMovie(m))
-                                {
-                                    throw new Exception("db failed");
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine($"Could not add Movie to the catalog: {ex.Message}");
-                                Console.ReadKey();
-                            }
+                            await movieService.AddMovie(m);
+
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            Console.WriteLine("Movie added to Watchlist.");
+                            Console.ResetColor();
+                            Thread.Sleep(3 * 1000);
+                            continue;
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"Could not add torrent to download: {ex.Message}");
+                            Console.WriteLine($"Could not add Movie to the watchlist: {ex.Message}");
                             Console.ReadKey();
                         }
 
-                        break;
+                        continue;
                     }
 
-                    if (restartFlag2)
+                    if (int.TryParse(input, out int selectedTorrentIndex))
                     {
+                        selectedTorrent = foundTorrents.ElementAt(selectedTorrentIndex - 1);
+                    }
+
+                    if(selectedTorrent == null)
+                    {
+                        Console.WriteLine($"Selected torrent was null.");
+                        Console.ReadKey();
                         continue;
+					}
+
+                    var transmission = serviceProvider.GetService<ITorrentClientService>();
+                    try
+                    {
+                        var result = await transmission.AddTorrentAsync(selectedTorrent.MagnetLink);
+                        if(result == null)
+                        {
+                            throw new Exception("Could not add torrent to the torrent client.");
+                        }
+                        try
+                        {
+                            var m = MergeMovie(selectedMovie, selectedTorrent, result);
+
+                            if (!await movieService.AddMovie(m))
+                            {
+                                throw new Exception("db failed");
+                            }
+
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            Console.WriteLine("Movie added for download.");
+                            Console.ResetColor();
+                            Thread.Sleep(3 * 1000);
+                            continue;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Could not add Movie to the catalog: {ex.Message}");
+                            Console.ReadKey();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Could not add torrent to download: {ex.Message}");
+                        Console.ReadKey();
                     }
                 }
 
@@ -290,25 +308,6 @@ namespace net.jancerveny.sofaking.client.console
                 //    .AddSingleton<IVerifiedMovieSearchService, ImdbService>()
                 //    .BuildServiceProvider();
 
-        }
-
-        private static async Task AddToWatchlistPrompt(Movie movie, MovieService ms)
-        {
-            Console.Write("\r\n");
-            Console.WriteLine("[y/n] Add to watchlist?");
-            var key = Console.ReadKey();
-            if (key.KeyChar == 'y')
-            {
-                try
-                {
-                    await ms.AddMovie(movie);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Could not add Movie to the watchlist: {ex.Message}");
-                    Console.ReadKey();
-                }
-            }
         }
 
         private static string SetMovieConsoleStatus(Movie movieJob)
