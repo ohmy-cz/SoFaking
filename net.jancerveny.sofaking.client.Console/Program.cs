@@ -65,14 +65,6 @@ namespace net.jancerveny.sofaking.client.console
             {
                 var serviceProvider = serviceScope.ServiceProvider;
 
-
-
-
-
-
-
-
-
                 while (true)
                 {
                     var movieService = serviceProvider.GetService<MovieService>();
@@ -129,7 +121,31 @@ namespace net.jancerveny.sofaking.client.console
                     }
 
                     var torrentSearchService = serviceProvider.GetService<TPBParserService>();
-                    var foundTorrents = await torrentSearchService.Search($"{selectedMovie.Title} {selectedMovie.ReleaseYear}");
+                    var torrentQuery = $"{selectedMovie.Title} {selectedMovie.ReleaseYear}";
+
+                    // TODO: get rid of this
+                goto defaulttorrentsearch;
+
+                #region Confirm torrent search query
+                confirmtorrentsearchquery:
+                    {
+                        Console.Clear();
+                        Console.WriteLine($"Torrent search query: {torrentQuery}. Overwrite? (empty to keep)");
+                        var tqInput = Console.ReadLine();
+                        if (tqInput.Trim() != string.Empty)
+                        {
+                            torrentQuery = tqInput;
+                        }
+                        Console.Clear();
+                    }
+                #endregion
+
+                defaulttorrentsearch:
+                    {
+                        // Just skip ahead...
+                    }
+
+                var foundTorrents = await torrentSearchService.Search(torrentQuery);
                     if (foundTorrents.Count == 0)
                     {
                         Console.Write("\r\n");
@@ -159,18 +175,6 @@ namespace net.jancerveny.sofaking.client.console
                         }
                     }
 
-
-
-
-
-
-
-
-
-
-
-
-
                     Console.Clear();
                     for (var i = 0; i < foundTorrents.Count(); i++)
                     {
@@ -196,14 +200,14 @@ namespace net.jancerveny.sofaking.client.console
                         Console.WriteLine($"None of the torrents above passed the limits (Seeders > 0, Size Gb > {TorrentScoring.FileSizeGbMin} < {TorrentScoring.FileSizeGbMax}), or contained a banned word: {string.Join(", ", TorrentScoring.Tags.Where(x => x.Value == TorrentScoring.BannedTag).Select(x => x.Key))}");
                         Console.ResetColor();
                         Console.WriteLine("\n");
-                        Console.WriteLine($"Cancel? [n], Watchlist [w], [1-{(foundTorrents.Count() + 1)}] for manual selection, CTRL+C = quit)");
+                        Console.WriteLine($"Cancel? [n], Watchlist [w], [1-{(foundTorrents.Count() + 1)}] for manual selection, [c] for changing the search query, CTRL+C = quit)");
                     } else
                     {
                         Console.ForegroundColor = ConsoleColor.Green;
                         Console.WriteLine($"Best torrent: ({bestTorrent.Seeders} Seeders), {bestTorrent.SizeGb}Gb {bestTorrent.Name}");
                         Console.ResetColor();
                         Console.WriteLine("\n");
-                        Console.WriteLine($"Download the best torrent? [y/n], [1-{(foundTorrents.Count() + 1)}] for manual selection, CTRL+C = quit)");
+                        Console.WriteLine($"Download the best torrent? [y/n], [1-{(foundTorrents.Count() + 1)}] for manual selection, [c] for changing the search query, CTRL+C = quit)");
                     }
                     
                     var selectedTorrent = bestTorrent;
@@ -212,6 +216,11 @@ namespace net.jancerveny.sofaking.client.console
                     if (input == "n")
                     {
                         continue;
+                    }
+
+                    if (input == "c")
+                    {
+                        goto confirmtorrentsearchquery;
                     }
 
                     if (input == "w")
