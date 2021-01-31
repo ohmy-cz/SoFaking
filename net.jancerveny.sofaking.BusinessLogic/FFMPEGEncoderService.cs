@@ -270,13 +270,13 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			ffmpeg.Progress += (object sender, ConversionProgressEventArgs e) =>
 			{
 				PercentDone = ((double)e.ProcessedDuration.Ticks / (double)transcodingJob.Duration.Ticks) * 100d;
-				OnProgress.Invoke(this, new EncodingProgressEventArgs(PercentDone, CurrentFile, e.SizeKb, e.ProcessedDuration, e.Fps));
+				OnProgress?.Invoke(this, new EncodingProgressEventArgs(PercentDone, CurrentFile, e.SizeKb, e.ProcessedDuration, e.Fps));
 			};
 				
 			ffmpeg.Error += (object sender, ConversionErrorEventArgs e) => {
 				_logger.LogError($"Encoding error {e.Exception.Message}", e.Exception);
 				Kill();
-				OnError.Invoke(this, new EncodingErrorEventArgs(e.Exception.Message));
+				OnError?.Invoke(this, new EncodingErrorEventArgs(e.Exception.Message));
 			};
 				
 			ffmpeg.Complete += (object sender, ConversionCompleteEventArgs e) =>
@@ -299,7 +299,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				//_logger.LogWarning("E");
 				//_busy = false;
 				//_logger.LogWarning("F");
-				OnSuccess.Invoke(this, new EncodingSuccessEventArgs(_tempFile));
+				OnSuccess?.Invoke(this, new EncodingSuccessEventArgs(_tempFile));
 				_busy = false;
 			};
 
@@ -328,7 +328,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			_logger.LogDebug("Ffmpeg started");
 			_stalledFileCandidate = null;
 			StallMonitor();
-			OnStart.Invoke(this, new EventArgs());
+			OnStart?.Invoke(this, new EventArgs());
 		}
 
 		public void Kill()
@@ -462,7 +462,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			_cancellationTokenSource = new CancellationTokenSource();
 			_cancellationTokenSource.Token.Register(() => {
 				CleanTempData(true);
-				OnCancelled.Invoke(this, new EventArgs());
+				OnCancelled?.Invoke(this, new EventArgs());
 				_busy = false;
 				_logger.LogInformation("Encoding cancelled");
 				_cancellationTokenSource = new CancellationTokenSource();
@@ -484,7 +484,7 @@ namespace net.jancerveny.sofaking.BusinessLogic
 					RedirectStandardOutput = true,
 					RedirectStandardError = true,
 					UseShellExecute = false,
-					CreateNoWindow = true
+					CreateNoWindow = false
 				}
 			};
 

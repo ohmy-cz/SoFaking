@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "net.jancerveny.sofaking.ManualConvert": {
+      "commandName": "Project",
+      "commandLineArgs": "C:\\Users\\me\\Downloads\\The.Simpsons.S32E06.1080p.WEB.H264-CAKES[TGx]\\the.simpsons.s32e06.1080p.web.h264-cakes.mkv"
+    }
+  }
+}

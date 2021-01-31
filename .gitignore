@@ -351,3 +351,4 @@ MigrationBackup/
 
 appsettings.*.json
 dbsettings.*.json
+/.idea/.idea.SoFaking/.idea
