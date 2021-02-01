@@ -9,8 +9,10 @@ using net.jancerveny.sofaking.Common.Models;
 using net.jancerveny.sofaking.DataLayer;
 using net.jancerveny.sofaking.ManualConvert.Models;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace net.jancerveny.sofaking.ManualConvert
@@ -53,69 +55,155 @@ namespace net.jancerveny.sofaking.ManualConvert
 
             using (var serviceScope = host.Services.CreateScope())
             {
+                var done = false;
                 var serviceProvider = serviceScope.ServiceProvider;
                 var logger = new NullLogger<FFMPEGEncoderService>();
-
-                var encoderTranscodingInstance = new FFMPEGEncoderService(logger, encoderConfiguration, sofakingConfiguration);
+                var flags = EncodingTargetFlags.None;
                 var videoFile = args[0];
+                IMediaInfo mediaInfo = null;
+                var useCuda = true;
 
-                while (true)
+                Console.Clear();
+                Console.WriteLine($"Is this a film (vs. cartoon)? [y/n]");
+                if (Console.ReadKey().KeyChar == 'n')
                 {
-                    var flags = EncodingTargetFlags.None;
-                    IMediaInfo mediaInfo = null;
-                    try
-                    {
-                        mediaInfo = await encoderTranscodingInstance.GetMediaInfo(videoFile);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine("Can not read media info: " + ex.Message);
-                        break;
-                    }
-
-                    try
-                    {
-                        if (!HasAcceptableVideo(dc, sofakingConfiguration, mediaInfo))
-                        {
-                            flags |= EncodingTargetFlags.NeedsNewVideo;
-                        }
-                    }
-                    catch (ArgumentException ex)
-                    {
-                        Console.WriteLine("Incompatible video: " + ex.Message);
-                        break;
-                    }
-
-                    try
-                    {
-                        if (!HasAcceptableAudio(dc, mediaInfo))
-                        {
-                            flags |= EncodingTargetFlags.NeedsNewAudio;
-                        }
-                    }
-                    catch (ArgumentException ex)
-                    {
-                        Console.WriteLine("Incompatible audio: " + ex.Message);
-                        break;
-                    }
-
-                    if (flags == EncodingTargetFlags.None)
-                    {
-                        Console.WriteLine($"Video file {videoFile} doesn't need transcoding, adding to files to move.");
-                        break;
-                    }
-
-                    await encoderTranscodingInstance.StartTranscodingAsync(new TranscodingJob
-                    {
-                        SourceFile = videoFile,
-                        Action = flags,
-                        Duration = mediaInfo.Duration,
-                    });
+                    flags |= EncodingTargetFlags.VideoIsAnimation;
                 }
 
-                Console.ReadKey();
+                var encoderTranscodingInstance = new FFMPEGEncoderService(logger, encoderConfiguration, sofakingConfiguration);
+
+                try
+                {
+                    mediaInfo = await encoderTranscodingInstance.GetMediaInfo(videoFile);
+                }
+                catch (Exception ex)
+                {
+                    Console.Clear();
+                    Console.WriteLine("Can not read media info: " + ex.Message);
+                    Console.ReadKey();
+                    return;
+                }
+
+                // Find subtitles
+                var filenameBase = Path.GetFileNameWithoutExtension(videoFile);
+                var path = Path.GetDirectoryName(videoFile);
+                var subtitles = new Dictionary<string, string>();
+
+                foreach(var sl in sofakingConfiguration.SubtitleLanguages)
+                {
+                    var subPath = Path.Combine(path, filenameBase + $".{sl}.srt");
+                    if (File.Exists(subPath))
+                    {
+                        subtitles.Add(sl, subPath);
+                    }
+                }
+
+                if (subtitles.Count > 0)
+                {
+                    Console.Clear();
+                    Console.WriteLine($"Found {subtitles.Count} subtitles to embed.");
+                    Thread.Sleep(3*1000);
+
+                    flags |= EncodingTargetFlags.ExternalSubtitles;
+                }
+
+
+                try
+                {
+                    if (!HasAcceptableVideo(dc, sofakingConfiguration, mediaInfo))
+                    {
+                        Console.Clear();
+                        Console.WriteLine($"Video ({mediaInfo.VideoCodec}) needs converting. Continue? [y/n]");
+                        if (Console.ReadKey().KeyChar == 'n')
+                        {
+                            return;
+                        }
+
+                        if (encoderConfiguration.CanUseCuda)
+                        {
+                            Console.Clear();
+                            Console.WriteLine($"Use CUDA? [y/n]");
+                            if (Console.ReadKey().KeyChar == 'n')
+                            {
+                                useCuda = false; ;
+                            }
+                        }
+
+                        flags |= EncodingTargetFlags.NeedsNewVideo;
+                    }
+                }
+                catch (ArgumentException ex)
+                {
+                    Console.Clear();
+                    Console.WriteLine("Incompatible video: " + ex.Message);
+                    Console.ReadKey();
+                    return;
+                }
+
+                try
+                {
+                    if (!HasAcceptableAudio(dc, mediaInfo))
+                    {
+                        Console.Clear();
+                        Console.WriteLine($"Audio ({mediaInfo.AudioCodec}) needs converting. Continue? [y/n]");
+                        if(Console.ReadKey().KeyChar == 'n')
+                        {
+                            return;
+                        }
+
+                        flags |= EncodingTargetFlags.NeedsNewAudio;
+                    }
+                }
+                catch (ArgumentException ex)
+                {
+                    Console.Clear();
+                    Console.WriteLine("Incompatible audio: " + ex.Message);
+                    Console.ReadKey();
+                    return;
+                }
+
+                if (flags == EncodingTargetFlags.None)
+                {
+                    Console.Clear();
+                    Console.WriteLine($"Video file {videoFile} doesn't need transcoding, adding to files to move.");
+                    Console.ReadKey();
+                    return;
+                }
+
+                Console.Clear();
+                Console.WriteLine("Converting...");
+
+                encoderTranscodingInstance.OnSuccess += (object sender, EncodingSuccessEventArgs e) => {
+                    done = true;
+                };
+
+                encoderTranscodingInstance.OnProgress += (object sender, EncodingProgressEventArgs e) => {
+                    Console.Clear();
+                    Console.WriteLine($"Transcoding progress: {e.ProgressPercent:0.##}%");
+                };
+
+                // non-blocking, only starts the external engine
+                await encoderTranscodingInstance.StartTranscodingAsync(new TranscodingJob
+                {
+                    SourceFile = videoFile,
+                    Action = flags,
+                    Duration = mediaInfo.Duration,
+                    Subtitles = subtitles,
+                    UseCuda = useCuda
+                });
+
+                while (!done)
+                {
+                    // wait until encoding finished
+                }
+
+                Console.Clear();
+                Console.WriteLine("Done!");
+                Thread.Sleep(3 * 1000);
             }
         }
+        
+
 
         private static bool HasAcceptableVideo(DConf dc, SoFakingConfiguration sc, IMediaInfo mediaInfo)
         {

@@ -14,5 +14,7 @@ namespace net.jancerveny.sofaking.BusinessLogic.Interfaces
 		Dictionary<FFMPEGMetadataEnum, string> Metadata { get; set; }
 		TimeSpan Duration { get; set; }
 		string CoverImageJpg { get; set; }
+		public Dictionary<string, string> Subtitles { get; set; }
+		public bool UseCuda { get; set; }
 	}
 }

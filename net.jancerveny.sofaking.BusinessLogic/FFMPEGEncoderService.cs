@@ -141,7 +141,25 @@ namespace net.jancerveny.sofaking.BusinessLogic
 			// Reencode the english stream only, and add it as primary stream. Copy all other desirable audio languages from the list.
 			_logger.LogDebug("Constructing the encoder command");
 			var a = new StringBuilder();
+
+			// Overwrite existing file
+			a.Append("-y ");
+
+			if(transcodingJob.UseCuda)
+				a.Append("-hwaccel cuda -hwaccel_output_format cuda ");
+
 			a.Append($"-i \"{CurrentFile}\" ");
+
+			// Subtitles - input files
+			if (transcodingJob.Subtitles.Count > 0)
+			{
+				foreach (var sub in transcodingJob.Subtitles)
+				{
+					//			a.Append("-sub_charenc UTF_8 -i french.srt ")
+					a.Append($"-i {sub.Value} ");
+				}
+			}
+
 			a.Append("-c copy ");
 
 			// Copy metadata
@@ -202,8 +220,27 @@ namespace net.jancerveny.sofaking.BusinessLogic
 				audioTrackCounter++;
 			}
 
-			// Subtitles
-			a.Append($"-map 0:s{optionalFlag} ");
+			// Subtitles - lang settings
+			if(transcodingJob.Subtitles.Count > 0)
+			{
+				a.Append($"-map -0:s{optionalFlag} ");
+
+				for (var i = 1; i < transcodingJob.Subtitles.Count + 1; i++)
+				{
+					a.Append($"-map {i} ");
+				}
+
+				var subtitleIndex = 0;
+				foreach(var sub in transcodingJob.Subtitles)
+				{
+					a.Append($"-metadata:s:s:{subtitleIndex} language={sub.Key} "); // Could be three letters
+					subtitleIndex++;
+				}
+			} else
+            {
+				// Keep the embeded subs only if no new subs had been provided.
+				a.Append($"-map 0:s{optionalFlag} ");
+			}
 
 			// Prevents some errors.
 			a.Append("-max_muxing_queue_size 9999 ");

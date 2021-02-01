@@ -9,6 +9,7 @@ namespace net.jancerveny.sofaking.Common.Models
 		public int MaxHorizontalVideoResolution { get; set; }
 		public int MaxSizeGb { get; set; }
 		public string [] AudioLanguages { get; set; }
+		public string [] SubtitleLanguages { get; set; }
 		public string TempFolder { get; set; }
 	}
 }

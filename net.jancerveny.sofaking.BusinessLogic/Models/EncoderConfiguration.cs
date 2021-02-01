@@ -11,5 +11,9 @@ namespace net.jancerveny.sofaking.BusinessLogic.Models
 		public string OutputAudioCodec { get; set; }
 		public double OutputVideoBitrateMbits { get; set; }
 		public double OutputAudioBitrateMbits { get; set; }
+		/// <summary>
+		/// NVidia GPU acceleration
+		/// </summary>
+		public bool CanUseCuda { get; set; }
 	}
 }
