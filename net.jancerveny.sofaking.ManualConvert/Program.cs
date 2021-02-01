@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using ByteSizeLib;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -110,10 +111,31 @@ namespace net.jancerveny.sofaking.ManualConvert
 
                 try
                 {
-                    if (!HasAcceptableVideo(dc, sofakingConfiguration, mediaInfo))
+                    var videoAudit = HasAcceptableVideo(dc, sofakingConfiguration, mediaInfo);
+
+                    if (videoAudit != VideoCompatibilityFlags.Compatible)
                     {
                         Console.Clear();
-                        Console.WriteLine($"Video ({mediaInfo.VideoCodec}) needs converting. Continue? [y/n]");
+                        Console.WriteLine("Video details:");
+                        if(videoAudit.HasFlag(VideoCompatibilityFlags.IncompatibleCodec))
+                            Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"   Codec: {mediaInfo.VideoCodec}, (Accepted: {string.Join(", ", dc.AcceptedVideoCodecs)})");
+                        Console.ResetColor();
+                        if (videoAudit.HasFlag(VideoCompatibilityFlags.IncompatibleResolution))
+                            Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"   H. Resolution: {mediaInfo.HorizontalVideoResolution}px, (Max: {sofakingConfiguration.MaxHorizontalVideoResolution}px)");
+                        Console.ResetColor();
+                        if (videoAudit.HasFlag(VideoCompatibilityFlags.IncompatibleBitrate))
+                            Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"   Avg bitrate: {(mediaInfo.AVBitrateKbs.HasValue ? ByteSize.FromKiloBytes(mediaInfo.AVBitrateKbs.Value).ToString() : "?")}/s, (Max: {ByteSize.FromKiloBytes(TargetVideoBitrateKbs)}/s");
+                        Console.ResetColor();
+                        if (videoAudit.HasFlag(VideoCompatibilityFlags.IncompatibleSize))
+                            Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"   Size: {ByteSize.FromBytes(mediaInfo.FileInfo.Length)} (Max: {ByteSize.FromGigaBytes(sofakingConfiguration.MaxSizeGb)})");
+                        Console.ResetColor();
+                        Console.WriteLine();
+
+                        Console.WriteLine($"Video needs converting. Continue? [y/n]");
                         if (Console.ReadKey().KeyChar == 'n')
                         {
                             return;
@@ -145,7 +167,7 @@ namespace net.jancerveny.sofaking.ManualConvert
                     if (!HasAcceptableAudio(dc, mediaInfo))
                     {
                         Console.Clear();
-                        Console.WriteLine($"Audio ({mediaInfo.AudioCodec}) needs converting. Continue? [y/n]");
+                        Console.WriteLine($"Audio ({mediaInfo.AudioCodec}, (Accepted: {string.Join(", ", dc.AcceptedAudioCodecs)})) needs converting. Continue? [y/n]");
                         if(Console.ReadKey().KeyChar == 'n')
                         {
                             return;
@@ -205,7 +227,7 @@ namespace net.jancerveny.sofaking.ManualConvert
         
 
 
-        private static bool HasAcceptableVideo(DConf dc, SoFakingConfiguration sc, IMediaInfo mediaInfo)
+        private static VideoCompatibilityFlags HasAcceptableVideo(DConf dc, SoFakingConfiguration sc, IMediaInfo mediaInfo)
         {
             if (dc.AcceptedVideoCodecs == null) throw new ArgumentNullException(nameof(dc.AcceptedVideoCodecs));
             if (mediaInfo == null) throw new ArgumentNullException(nameof(mediaInfo));
@@ -229,7 +251,26 @@ namespace net.jancerveny.sofaking.ManualConvert
             // Unfortunately, FFMPEG can't return bitrate of only the video stream. So we will ONLY stream copy if video and all the audio streams combined have a lower bitrate than level 4.2 h264 video bitrate compatible with PS4 (6,25Mbit/s)
             var acceptableBitrate = (mediaInfo.AVBitrateKbs == null || mediaInfo.AVBitrateKbs <= TargetVideoBitrateKbs);
 
-            return acceptableCodec && acceptableResolution && acceptableSize && acceptableBitrate;
+            var flags = VideoCompatibilityFlags.Compatible;
+
+            if(!acceptableCodec)
+            {
+                flags |= VideoCompatibilityFlags.IncompatibleCodec;
+            }
+            if (!acceptableResolution)
+            {
+                flags |= VideoCompatibilityFlags.IncompatibleResolution;
+            }
+            if (!acceptableSize)
+            {
+                flags |= VideoCompatibilityFlags.IncompatibleSize;
+            }
+            if (!acceptableBitrate)
+            {
+                flags |= VideoCompatibilityFlags.IncompatibleBitrate;
+            }
+
+            return flags;
         }
 
         private static bool HasAcceptableAudio(DConf dc, IMediaInfo mediaInfo)
